@@ -30,25 +30,27 @@ export default function Header() {
            ヘッダー全体
            ========================= */
         .header {
-          width: 100%;
-          height: 120px;
+          position: fixed; /* ★画面に固定 */
+          top: 0;          /* ★一番上に張り付ける */
+          left: 0;         /* ★左端から */
+          width: 100%;     /* ★横幅いっぱい */
+          height: 70px;
 
           display: flex;
           align-items: center;
 
-          position: relative;
-
           background-color: #a5e386;
+          z-index: 1000;   /* ★他のコンテンツの下に隠れないように手前にする */
         }
 
         /* =========================
            アカウント画像
            ========================= */
         .account-image {
-          width: 74px;
-          height: 74px;
+          width: 50px;
+          height: 50px;
 
-          margin-left: 40px;
+          margin-left: 20px;
 
           background-color: #d3d3d3;
 
