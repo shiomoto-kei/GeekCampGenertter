@@ -1,8 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import Header from "../components/header";
 
 export default function Setup() {
+  // 入力値の状態管理
+  const [nickname, setNickname] = useState("");
+  const [gender, setGender] = useState("");
+  const [age, setAge] = useState("");
+
+  // エラーメッセージ用の状態管理
+  const [errorMessage, setErrorMessage] = useState("");
+
+  // 「始める！」ボタンを押したときの処理
+  const handleStart = () => {
+    // 3つのうち、どれか1つでも空欄（または空白のみ）があるかチェック
+    if (!nickname.trim() || !gender.trim() || !age.trim()) {
+      setErrorMessage("すべての項目を入力してね！");
+      return;
+    }
+
+    // すべて入力されている場合のエラークリア＆進む処理
+    setErrorMessage("");
+    console.log("初期設定完了:", { nickname, gender, age });
+    // TODO: ホーム画面などへの遷移処理をここに追加
+  };
+
   return (
     <div className="setup-page">
       {/* 共通のヘッダー */}
@@ -26,6 +49,8 @@ export default function Setup() {
             type="text"
             className="nickname-input"
             placeholder="ニックネームを入力してね"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value)}
           />
         </div>
 
@@ -48,19 +73,34 @@ export default function Setup() {
           <div className="profile-inputs">
             <label className="input-row">
               <span className="input-label">性別：</span>
-              <input type="text" className="small-input" />
+              <input 
+                type="text" 
+                className="small-input" 
+                value={gender}
+                onChange={(e) => setGender(e.target.value)}
+              />
             </label>
             <label className="input-row">
               <span className="input-label">年齢：</span>
-              <input type="text" className="small-input" />
+              <input 
+                type="text" 
+                className="small-input" 
+                value={age}
+                onChange={(e) => setAge(e.target.value)}
+              />
             </label>
           </div>
         </div>
 
         {/* =========================
+            未入力エラーメッセージ
+            ========================= */}
+        {errorMessage && <p className="error-text">{errorMessage}</p>}
+
+        {/* =========================
             始めるボタン
             ========================= */}
-        <button className="start-button">
+        <button className="start-button" onClick={handleStart}>
           始める！
         </button>
 
@@ -88,8 +128,7 @@ export default function Setup() {
           flex-direction: column;
           align-items: center;
           
-          /* ★ ヘッダーの高さ＋少しの余白分、しっかり上に空間をあける */
-          padding-top: 110px; /* ← ここを 60px から 110px に増やしました */
+          padding-top: 110px;
           padding-bottom: 40px;
           padding-left: 20px;
           padding-right: 20px;
@@ -107,7 +146,7 @@ export default function Setup() {
           border-radius: 6px;
           padding: 8px 30px;
           text-align: center;
-          margin-bottom: 70px; /* 下の要素との余白 */
+          margin-bottom: 50px; /* エラーメッセージ用のスペースを考慮して少し詰める */
         }
 
         .page-title {
@@ -148,13 +187,12 @@ export default function Setup() {
            ========================= */
         .nickname-area {
           width: 85%;
-          margin-bottom: 50px;
+          margin-bottom: 40px;
         }
 
         .nickname-input {
           width: 100%;
           border: none;
-          /* 下線だけを表示 */
           border-bottom: 2px solid #333333; 
           padding: 8px;
           font-size: 16px;
@@ -176,7 +214,7 @@ export default function Setup() {
           font-size: 18px;
           line-height: 1.6;
           color: #111111;
-          margin: 0 0 50px 0;
+          margin: 0 0 40px 0;
         }
 
         /* =========================
@@ -187,7 +225,7 @@ export default function Setup() {
           align-items: center;
           justify-content: center;
           gap: 24px;
-          margin-bottom: 70px;
+          margin-bottom: 24px;
           width: 100%;
         }
 
@@ -214,7 +252,6 @@ export default function Setup() {
         }
 
         .input-label {
-          /* 文字の幅を固定して縦を揃える */
           width: 60px; 
           text-align: justify;
           text-align-last: justify;
@@ -231,11 +268,23 @@ export default function Setup() {
         }
 
         /* =========================
+           エラーメッセージ
+           ========================= */
+        .error-text {
+          color: #ff4d4d;
+          font-size: 14px;
+          font-weight: bold;
+          margin: 0 0 16px 0;
+          height: 20px;
+          text-align: center;
+        }
+
+        /* =========================
            始めるボタン
            ========================= */
         .start-button {
-          background-color: #d2f6c5; /* 薄い緑色 */
-          border: 1px solid #b5dfa4; /* 少し濃い緑の枠線 */
+          background-color: #d2f6c5;
+          border: 1px solid #b5dfa4;
           border-radius: 10px;
           padding: 12px 48px;
           font-size: 20px;
