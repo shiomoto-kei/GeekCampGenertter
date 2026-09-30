@@ -2,12 +2,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 export default function Footer() {
   const pathname = usePathname();
+  const [hasUnreadNotice, setHasUnreadNotice] = useState(false);
 
-  // ★ あとでバックエンドと繋ぐまでの仮変数（trueなら赤丸を表示、falseなら非表示）
-  const hasUnreadNotice = false;
+  useEffect(() => {
+    let active = true;
+    async function loadUnread() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          if (active) setHasUnreadNotice(false);
+          return;
+        }
+        const response = await fetch("/api/notifications?count=unread", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("通知件数を取得できませんでした");
+        const result = await response.json();
+        if (active) setHasUnreadNotice(result.unreadCount > 0);
+      } catch {
+        if (active) setHasUnreadNotice(false);
+      }
+    }
+    loadUnread();
+    window.addEventListener("focus", loadUnread);
+    window.addEventListener("notifications-updated", loadUnread);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", loadUnread);
+      window.removeEventListener("notifications-updated", loadUnread);
+    };
+  }, [pathname]);
 
   return (
     <>
