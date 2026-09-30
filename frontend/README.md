@@ -1,5 +1,35 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Supabase setup
+
+Create `frontend/.env.local` with values from the **same** Supabase project:
+
+```dotenv
+NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<publishable-or-anon-key>
+SUPABASE_SECRET_KEY=<server-only-secret-key>
+```
+
+`NEXT_PUBLIC_SUPABASE_URL` is the project root URL, not a `/rest/v1/` URL. Never prefix the secret key with `NEXT_PUBLIC_`, or commit `.env.local`.
+
+Run `app/db/db_setup.sql` in that project's SQL Editor. Before using the app with real users, review and apply `app/db/db_security.sql`; it enables RLS and restricts browser access. Coordinate its read/write restrictions with the Home and notification implementations first.
+
+Run `app/db/db_notifications.sql` after `db_setup.sql` to make notifications private and create them automatically for replies and reactions. This notification-only SQL does not change the Home page's post permissions. The broader `db_security.sql` is still needed before real users can safely use the app.
+
+For Google sign-in, enable the Google provider in Supabase, register that project's Supabase callback URL in the Google Cloud OAuth web client, and allow the local app redirect URL in Supabase Auth URL Configuration.
+
+## Login flow
+
+- Google: `/login` → Supabase OAuth → `/auth/complete` → existing `users.google_sub` goes to `/home`; a new user goes to `/setup?mode=google` and is saved before entering `/home`.
+- Guest: `/login` → existing guest cookie is looked up in `users.guest_uuid`; an existing guest goes to `/home`, while a new guest completes `/setup?mode=guest`. The server creates an HttpOnly UUID cookie after successful setup.
+- Selecting Guest signs out any current Google session. Guest data is **not** automatically merged into a Google account.
+- On My Page, Google logout ends the Supabase session. Returning to the login page as a guest keeps the guest cookie so the same browser can resume its guest identity.
+- `GET /api/session?mode=google` requires a Supabase access token in the `Authorization` header. `mode=guest` uses the HttpOnly guest cookie. Both return only public profile fields.
+
+The shared screen gate checks this session API before allowing Home and My Page. A registered guest can use those pages, but Notice requires Google login. Visitors without a registered profile see a dimmed screen and a link to login; this overlay is UX, not a replacement for server-side authorization.
+
+The Notice page reads only the signed-in Google user's notifications via `GET /api/notifications`, and `PATCH /api/notifications` marks that user's notifications read. The footer shows an unread indicator. The DB notification trigger runs after the notification SQL above is applied; earlier replies/reactions are not backfilled.
+
 ## Getting Started
 
 First, run the development server:

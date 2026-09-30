@@ -1,40 +1,103 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import NotificationItem from "../components/notification-item";
+import { supabase } from "@/lib/supabase/client";
+
+type NoticeData = {
+  id: number;
+  actorName: string;
+  type: "reply" | "reaction";
+  isRead: boolean;
+  createdAt: string;
+};
 
 export default function Notice() {
+  const [notifications, setNotifications] = useState<NoticeData[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) return;
+        const response = await fetch("/api/notifications", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "通知を取得できませんでした。");
+        if (active) {
+          setNotifications(result.notifications);
+          setUnreadCount(result.unreadCount);
+        }
+      } catch (error) {
+        if (active) setErrorMessage(error instanceof Error ? error.message : "通知を取得できませんでした。");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, []);
+
+  async function markAllRead() {
+    setUpdating(true);
+    setErrorMessage("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) throw new Error("Googleログインが必要です。");
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "既読にできませんでした。");
+      setNotifications((items) => items.map((item) => ({ ...item, isRead: true })));
+      setUnreadCount(0);
+      window.dispatchEvent(new Event("notifications-updated"));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "既読にできませんでした。");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   return (
     <div className="notice-page">
       {/* ヘッダー */}
       <Header />
 
-      {/* メインコンテンツ（ここだけスクロールする） */}
-      <main className="notice-main">
-        {/* 通知タイトル */}
+      {/* =========================
+          上に固定されるタイトルエリア
+          ========================= */}
+      <div className="title-area">
         <h1 className="notice-title">
           通知
         </h1>
+      </div>
 
-        {/* 通知一覧 */}
+      {/* メインコンテンツ（ここだけスクロールする） */}
+      <main className="notice-main">
+        {unreadCount > 0 && <button type="button" className="read-all" onClick={markAllRead} disabled={updating}>すべて既読にする（{unreadCount}件）</button>}
+        {errorMessage && <p role="alert" className="notice-message">{errorMessage}</p>}
+        {loading && <p className="notice-message">通知を読み込み中…</p>}
+        {!loading && !errorMessage && notifications.length === 0 && <p className="notice-message">通知はまだありません</p>}
         <div className="notification-list">
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
-          
+          {notifications.map((item) => (
+            <NotificationItem
+              key={item.id}
+              message={`${item.actorName}さんがあなたの投稿に${item.type === "reply" ? "返信しました" : "リアクションしました"}。`}
+              isRead={item.isRead}
+              date={new Date(item.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+            />
+          ))}
         </div>
       </main>
 
@@ -49,30 +112,33 @@ export default function Notice() {
           position: relative;
           width: 100%;
           max-width: 430px;
-          height: 100dvh; /* 画面の高さいっぱいに固定 */
+          height: 100dvh; 
           margin: 0 auto;
           display: flex;
           flex-direction: column;
           background-color: #ffffff;
-          overflow: hidden; /* 外側のスクロールを消す */
+          overflow: hidden; 
         }
 
         /* =========================
-           通知メイン
+           固定タイトルエリア
            ========================= */
-        .notice-main {
-          flex: 1;
-          overflow-y: auto; /* コンテンツ部分だけスクロールさせる */
+        .title-area {
+          position: fixed;
+          top: 70px; /* ヘッダーの真下からスタート */
+          left: 50%;
+          transform: translateX(-50%);
           width: 100%;
+          max-width: 430px;
           
-          /* ヘッダー(90px)の下、フッター(70px)の上の余白を確保 */
-          padding-top: 90px; 
-          padding-bottom: 90px;
-          box-sizing: border-box;
+          background-color: #ffffff; 
+          
+          /* ★修正箇所：下にも「10px」の白い余白を追加する */
+          padding: 14px 0 10px 0; 
           
           display: flex;
-          flex-direction: column;
-          align-items: center;
+          justify-content: center;
+          z-index: 900;
         }
 
         /* =========================
@@ -84,9 +150,6 @@ export default function Notice() {
           display: flex;
           align-items: center;
           justify-content: center;
-          
-          /* 下のリストとの間隔 */
-          margin: 0 auto 20px;
           box-sizing: border-box;
 
           border: 1px solid #cccccc;
@@ -98,6 +161,9 @@ export default function Notice() {
           color: #333333;
           position: relative;
           flex-shrink: 0;
+
+          /* ★marginを使うと背景が塗られず貫通の原因になるため、絶対に0にする */
+          margin: 0; 
         }
 
         /* 四隅の青い点 */
@@ -110,8 +176,6 @@ export default function Notice() {
           left: 4px;
           border-radius: 50%;
           background-color: #5fc2ea;
-          
-          /* 幅120px、高さ38pxに合わせて影の位置を微調整 */
           box-shadow:
             107px 0 #5fc2ea,
             0 28px #5fc2ea,
@@ -119,15 +183,36 @@ export default function Notice() {
         }
 
         /* =========================
+           通知メイン
+           ========================= */
+        .notice-main {
+          flex: 1;
+          overflow-y: auto; 
+          width: 100%;
+          
+          /* ★最初のリストの位置を計算
+             ヘッダー(90) + 上余白(14) + タイトル(43) + リストまでの隙間(20) = 167px */
+          padding-top: 147px; 
+          padding-bottom: 90px; 
+          box-sizing: border-box;
+          
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+        }
+
+        /* =========================
            通知一覧
            ========================= */
         .notification-list {
           width: 100%;
-          /* リストの一番上にも線を引く */
           border-top: 1px solid #dddddd; 
           display: flex;
           flex-direction: column;
         }
+        .read-all { align-self: flex-end; margin: 0 16px 12px; border: 0; background: transparent; color: #299d48; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .read-all:disabled { opacity: .5; cursor: wait; }
+        .notice-message { margin: 24px 16px; color: #555; font-size: 14px; text-align: center; }
       `}</style>
     </div>
   );

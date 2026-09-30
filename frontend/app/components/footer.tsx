@@ -2,9 +2,42 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
 
 export default function Footer() {
   const pathname = usePathname();
+  const [hasUnreadNotice, setHasUnreadNotice] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadUnread() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) {
+          if (active) setHasUnreadNotice(false);
+          return;
+        }
+        const response = await fetch("/api/notifications?count=unread", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("通知件数を取得できませんでした");
+        const result = await response.json();
+        if (active) setHasUnreadNotice(result.unreadCount > 0);
+      } catch {
+        if (active) setHasUnreadNotice(false);
+      }
+    }
+    loadUnread();
+    window.addEventListener("focus", loadUnread);
+    window.addEventListener("notifications-updated", loadUnread);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", loadUnread);
+      window.removeEventListener("notifications-updated", loadUnread);
+    };
+  }, [pathname]);
 
   return (
     <>
@@ -17,7 +50,10 @@ export default function Footer() {
 
         {/* Notice */}
         <Link href="/notice" className="footer-item">
-          <span className={`footer-icon notice-icon ${pathname === "/notice" ? "active-icon" : ""}`}></span>
+          <div className="icon-wrapper">
+            <span className={`footer-icon notice-icon ${pathname === "/notice" ? "active-icon" : ""}`}></span>
+            {hasUnreadNotice && <span className="notice-badge"></span>}
+          </div>
           <span className={`footer-text ${pathname === "/notice" ? "active-text" : ""}`}>Notice</span>
         </Link>
 
@@ -80,13 +116,22 @@ export default function Footer() {
           line-height: 1;
           text-align: center;
           
-          /* 強制的にグレー */
           color: #727272 !important; 
         }
 
         .active-text {
-          /* 現在のページなら強制的に緑 */
           color: #299d48 !important; 
+        }
+
+        /* =========================
+           アイコンと赤丸のラッパー
+           ========================= */
+        .icon-wrapper {
+          position: relative;
+          width: 25px;
+          height: 25px;
+          /* ★枠自体を強制的に中央揃えにする */
+          margin: 0 auto; 
         }
 
         /* =========================
@@ -94,12 +139,11 @@ export default function Footer() {
            ========================= */
         .footer-icon {
           display: block;
-          margin: 0 auto;
-
+          /* ★アイコン自体も強制的に中央揃えにする（元の設定を復活） */
+          margin: 0 auto; 
           width: 25px;
           height: 25px;
 
-          /* 強制的にグレー */
           background-color: #727272 !important;
 
           mask-repeat: no-repeat;
@@ -112,8 +156,20 @@ export default function Footer() {
         }
 
         .active-icon {
-          /* 現在のページなら強制的に緑 */
           background-color: #299d48 !important; 
+        }
+
+        /* =========================
+           通知の赤い丸（バッジ）
+           ========================= */
+        .notice-badge {
+          position: absolute;
+          top: -2px;
+          right: -4px;
+          width: 6px;
+          height: 6px;
+          background-color: #ff3b30;
+          border-radius: 50%;
         }
 
         /* =========================

@@ -97,6 +97,8 @@ export default function MyPostCard({ userName, text }: MyPostCardProps) {
         .user-name {
           font-size: 15px;
           color: #222222;
+          /* ★ ここを追加して少し下に下げる（2px〜5pxあたりで調整してみてください） */
+          top: 10px; 
         }
 
         .delete-button {
@@ -111,9 +113,9 @@ export default function MyPostCard({ userName, text }: MyPostCardProps) {
 
         .post-text {
           margin: 6px 0 8px;
-          padding-top: 6px;
+          padding-top: 7px;
           border-top: 1px solid #c8c8c8;
-          font-size: 15px;
+          font-size: 17px;
           color: #222222;
         }
 
