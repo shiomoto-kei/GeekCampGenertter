@@ -1,37 +1,89 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import Header from "../components/header";
+import { supabase } from "@/lib/supabase/client";
+
+type StyleProfile = { id: number; name: string };
 
 export default function Setup() {
-  // 入力値の状態管理
-  const [nickname, setNickname] = useState("");
-  const [gender, setGender] = useState("");
-  const [age, setAge] = useState("");
-
-  // エラーメッセージ用の状態管理
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [styles, setStyles] = useState<StyleProfile[]>([]);
+  const [styleId, setStyleId] = useState("");
+  const [isLoadingStyles, setIsLoadingStyles] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // 「始める！」ボタンを押したときの処理
-  const handleStart = () => {
-    // 3つのうち、どれか1つでも空欄（または空白のみ）があるかチェック
-    if (!nickname.trim() || !gender.trim() || !age.trim()) {
-      setErrorMessage("すべての項目を入力してね！");
-      return;
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadStyles() {
+      try {
+        const response = await fetch("/api/setup", { signal: controller.signal });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.styles)) {
+          throw new Error("スタイル一覧を取得できませんでした。");
+        }
+        const nextStyles = result.styles as StyleProfile[];
+        setStyles(nextStyles);
+        if (nextStyles.length > 0) setStyleId(String(nextStyles[0].id));
+      } catch {
+        if (!controller.signal.aborted) setErrorMessage("スタイル一覧を読み込めませんでした。接続設定を確認してください。");
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingStyles(false);
+      }
     }
 
-    // すべて入力されている場合のエラークリア＆進む処理
+    loadStyles();
+    return () => controller.abort();
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim() || !styleId) {
+      setErrorMessage("名前とスタイルを入力してね！");
+      return;
+    }
     setErrorMessage("");
-    console.log("初期設定完了:", { nickname, gender, age });
-    // TODO: ホーム画面などへの遷移処理をここに追加
-  };
+    setIsSubmitting(true);
+
+    try {
+      const mode = new URLSearchParams(window.location.search).get("mode") === "google" ? "google" : "guest";
+      let accessToken: string | undefined;
+
+      if (mode === "google") {
+        const { data, error } = await supabase.auth.getSession();
+        if (error || !data.session) {
+          throw new Error("Googleログインを確認できませんでした。ログイン画面からやり直してください。");
+        }
+        accessToken = data.session.access_token;
+      }
+
+      const response = await fetch("/api/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, name, styleId: Number(styleId), accessToken }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.error ?? "プロフィールを保存できませんでした。");
+      }
+
+      router.replace("/home");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "プロフィールを保存できませんでした。");
+      setIsSubmitting(false);
+    }
+  }
 
   return (
     <div className="setup-page">
       {/* 共通のヘッダー */}
       <Header />
 
-      <main className="setup-main">
+      <form className="setup-main" onSubmit={handleSubmit}>
         
         {/* =========================
             タイトル枠
@@ -49,8 +101,10 @@ export default function Setup() {
             type="text"
             className="nickname-input"
             placeholder="ニックネームを入力してね"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value)}
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            maxLength={50}
+            required
           />
         </div>
 
@@ -58,8 +112,8 @@ export default function Setup() {
             説明テキスト
             ========================= */}
         <p className="description-text">
-          性別と年齢を入力したら、<br />
-          アイコンが自動で設定されるよ！
+          名前と投稿スタイルを選んでね。<br />
+          文章の雰囲気は後から変更できるよ！
         </p>
 
         {/* =========================
@@ -72,39 +126,25 @@ export default function Setup() {
           {/* 右側の入力欄 */}
           <div className="profile-inputs">
             <label className="input-row">
-              <span className="input-label">性別：</span>
-              <input 
-                type="text" 
-                className="small-input" 
-                value={gender}
-                onChange={(e) => setGender(e.target.value)}
-              />
-            </label>
-            <label className="input-row">
-              <span className="input-label">年齢：</span>
-              <input 
-                type="text" 
-                className="small-input" 
-                value={age}
-                onChange={(e) => setAge(e.target.value)}
-              />
+              <span className="input-label">スタイル：</span>
+              <select className="style-select" value={styleId} onChange={(event) => setStyleId(event.target.value)} required>
+                {styles.map((style) => (
+                  <option key={style.id} value={style.id}>{style.name}</option>
+                ))}
+              </select>
             </label>
           </div>
         </div>
 
         {/* =========================
-            未入力エラーメッセージ
-            ========================= */}
-        {errorMessage && <p className="error-text">{errorMessage}</p>}
-
-        {/* =========================
             始めるボタン
             ========================= */}
-        <button className="start-button" onClick={handleStart}>
-          始める！
+        <button className="start-button" type="submit" disabled={isLoadingStyles || isSubmitting || styles.length === 0}>
+          {isSubmitting ? "保存中…" : "始める！"}
         </button>
+        {errorMessage && <p role="alert" className="setup-error">{errorMessage}</p>}
 
-      </main>
+      </form>
 
       <style jsx>{`
         /* =========================
@@ -252,31 +292,20 @@ export default function Setup() {
         }
 
         .input-label {
-          width: 60px; 
+          width: 90px;
           text-align: justify;
           text-align-last: justify;
         }
 
-        .small-input {
-          width: 65px;
+        .style-select {
+          min-width: 120px;
           height: 32px;
           border: 1px solid #727272;
           border-radius: 6px;
           outline: none;
           font-size: 16px;
-          text-align: center;
-        }
-
-        /* =========================
-           エラーメッセージ
-           ========================= */
-        .error-text {
-          color: #ff4d4d;
-          font-size: 14px;
-          font-weight: bold;
-          margin: 0 0 16px 0;
-          height: 20px;
-          text-align: center;
+          background: #ffffff;
+          color: #111111;
         }
 
         /* =========================
@@ -295,6 +324,19 @@ export default function Setup() {
 
         .start-button:active {
           opacity: 0.7;
+        }
+
+        .start-button:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .setup-error {
+          max-width: 280px;
+          color: #a31313;
+          font-size: 14px;
+          line-height: 1.5;
+          text-align: center;
         }
       `}</style>
     </div>

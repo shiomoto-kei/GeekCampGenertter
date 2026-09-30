@@ -1,6 +1,64 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase/client";
+
 export default function Login() {
+  const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function handleGoogleLogin() {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const { error: signOutError } = await supabase.auth.signOut();
+        if (signOutError) throw signOutError;
+      }
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: `${window.location.origin}/auth/complete`,
+        },
+      });
+
+      if (error) {
+        setErrorMessage("Googleログインを開始できませんでした。設定を確認してください。");
+        setIsLoading(false);
+      }
+    } catch {
+      setErrorMessage("Googleログインを開始できませんでした。時間をおいて再試行してください。");
+      setIsLoading(false);
+    }
+  }
+
+  async function handleGuestLogin() {
+    setIsLoading(true);
+    setErrorMessage("");
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
+
+      const response = await fetch("/api/session?mode=guest", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "ゲスト情報を確認できませんでした。");
+
+      router.replace(result.exists ? "/home" : "/setup?mode=guest");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "ゲスト情報を確認できませんでした。");
+      setIsLoading(false);
+    }
+  }
+
   return (
     <div className="login-page">
       {/* 
@@ -15,7 +73,7 @@ export default function Login() {
 
       <div className="button-group">
         {/* Googleログインボタン */}
-        <button type="button" className="google-button">
+        <button type="button" className="google-button" onClick={handleGoogleLogin} disabled={isLoading}>
           <svg className="google-icon" viewBox="0 0 24 24">
             <path
               fill="#4285F4"
@@ -38,9 +96,10 @@ export default function Login() {
         </button>
 
         {/* ゲストログインボタン */}
-        <button type="button" className="guest-button">
+        <button type="button" className="guest-button" onClick={handleGuestLogin} disabled={isLoading}>
           ゲストでログインする
         </button>
+        {errorMessage && <p role="alert" className="login-error">{errorMessage}</p>}
       </div>
 
       <style jsx>{`
@@ -161,6 +220,13 @@ export default function Login() {
         .google-button:active,
         .guest-button:active {
           opacity: 0.7;
+        }
+
+        .login-error {
+          margin: 0;
+          color: #a31313;
+          font-size: 14px;
+          line-height: 1.5;
         }
       `}</style>
     </div>

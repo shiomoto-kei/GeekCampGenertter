@@ -1,17 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import PostCard from "../components/post-card";
 // ★ モーダル部品を読み込む
 import ProfileModal from "../components/profile-modal";
 import ConfirmModal from "../components/confirm-modal";
+import { supabase } from "@/lib/supabase/client";
 
 export default function MyPage() {
+  const router = useRouter();
   // ★ モーダルの開閉状態
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
+  const [profileName, setProfileName] = useState("読み込み中…");
+  const [styleName, setStyleName] = useState("");
+  const [loginLabel, setLoginLabel] = useState("");
+  const [isGuest, setIsGuest] = useState(false);
+  const [logoutError, setLogoutError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadProfile() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        const mode = data.session ? "google" : "guest";
+        const response = await fetch(`/api/session?mode=${mode}`, {
+          headers: data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {},
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok || !result.exists) return;
+
+        const stylesResponse = await fetch("/api/setup", { cache: "no-store" });
+        const stylesResult = await stylesResponse.json();
+        const selectedStyle = stylesResult.styles?.find((style: { id: number }) => style.id === result.profile.default_style_id);
+
+        if (active) {
+          setProfileName(result.profile.name);
+          setStyleName(selectedStyle?.name ?? "スタイル未設定");
+          setLoginLabel(data.session?.user.email ?? "ゲスト利用中");
+          setIsGuest(!data.session);
+        }
+      } catch {
+        if (active) setProfileName("プロフィールを読み込めませんでした");
+      }
+    }
+
+    loadProfile();
+    return () => { active = false; };
+  }, [router]);
+
+  async function handleLogout() {
+    setLogoutError("");
+    try {
+      if (!isGuest) {
+        const { error } = await supabase.auth.signOut();
+        if (error) throw error;
+      }
+
+      setIsLogoutModalOpen(false);
+      router.replace("/login");
+    } catch {
+      setLogoutError("ログアウトに失敗しました。もう一度お試しください。");
+      setIsLogoutModalOpen(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -23,14 +80,15 @@ export default function MyPage() {
             <div className="profile-row">
               <div className="profile-icon"></div>
               <div className="profile-name-area">
-                <span className="profile-name">たになカッター</span>
-                <span className="profile-age">99歳</span>
+                <span className="profile-name">{profileName}</span>
+                <span className="profile-age">{styleName}</span>
               </div>
             </div>
 
             <p className="profile-mail">
-              ログイン中のメールアドレス：aaaa.1234.bbbbb@gmail.com
+              {loginLabel}
             </p>
+            {logoutError && <p role="alert" className="logout-error">{logoutError}</p>}
 
             <div className="profile-buttons">
               {/* ★ クリックでプロフィールモーダルを開く */}
@@ -39,7 +97,7 @@ export default function MyPage() {
               </button>
               {/* ★ クリックでログアウトモーダルを開く */}
               <button type="button" className="btn-logout" onClick={() => setIsLogoutModalOpen(true)}>
-                ログアウト
+                {isGuest ? "ログイン画面へ" : "ログアウト"}
               </button>
             </div>
           </div>
@@ -67,13 +125,10 @@ export default function MyPage() {
       <ConfirmModal
         isOpen={isLogoutModalOpen}
         onClose={() => setIsLogoutModalOpen(false)}
-        title="ログアウト"
-        message="ログアウトしてもよろしいですか？"
-        confirmText="ログアウト"
-        onConfirm={() => {
-          console.log("ログアウト処理");
-          setIsLogoutModalOpen(false);
-        }}
+        title={isGuest ? "ログイン画面へ" : "ログアウト"}
+        message={isGuest ? "ゲスト情報を残したままログイン画面へ戻りますか？" : "ログアウトしてもよろしいですか？"}
+        confirmText={isGuest ? "戻る" : "ログアウト"}
+        onConfirm={handleLogout}
       />
 
       {/* 以前と同じCSS（省略せずにそのまま使用してください） */}
@@ -92,6 +147,7 @@ export default function MyPage() {
         .profile-buttons button { height: 18px; padding: 0; border-radius: 4px; font-size: 8.5px; cursor: pointer; }
         .btn-change { width: 62px; border: 1px solid #999; background: #fff; color: #222; }
         .btn-logout { width: 62px; border: none; background: #ff4d4d; color: #fff; }
+        .logout-error { margin: 0; color: #a31313; font-size: 9px; text-align: center; }
         .content { flex: 1; overflow-y: auto; width: 100%; display: flex; flex-direction: column; align-items: center; padding-top: 300px; padding-bottom: 90px; box-sizing: border-box; }
         .post-list { width: 95%; display: flex; flex-direction: column; gap: 20px; }
       `}</style>
