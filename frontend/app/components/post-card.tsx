@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-// ★ 先ほど作った確認モーダルを読み込む
 import ConfirmModal from "./confirm-modal";
 
 type PostCardProps = {
@@ -11,8 +10,20 @@ type PostCardProps = {
 };
 
 export default function PostCard({ userName, text, showDelete = false }: PostCardProps) {
-  // ★ 削除モーダルの開閉状態
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+
+  // ★ 自分がどのリアクションを押したかを保持するステート（見た目用）
+  // null または "laugh" | "sad" | "good"
+  const [activeReaction, setActiveReaction] = useState<string | null>(null);
+
+  // リアクションをクリックしたときの切り替え処理
+  const handleReactionClick = (type: string) => {
+    if (activeReaction === type) {
+      setActiveReaction(null); // すでに押してたら解除
+    } else {
+      setActiveReaction(type); // 押してなかったらそれに変更
+    }
+  };
 
   return (
     <article className="post-card">
@@ -27,7 +38,7 @@ export default function PostCard({ userName, text, showDelete = false }: PostCar
             className="delete-button"
             type="button"
             aria-label="投稿を削除"
-            onClick={() => setIsDeleteModalOpen(true)} // ★ クリックでモーダルを開く
+            onClick={() => setIsDeleteModalOpen(true)}
           >
             <img src="/trash-icon.svg" alt="削除" width={24} height={24} />
           </button>
@@ -44,7 +55,7 @@ export default function PostCard({ userName, text, showDelete = false }: PostCar
       </div>
 
       <div className="reactions">
-        {/* リアクションアイコンは以前のコードと同じため省略せずにそのまま使用してください */}
+        {/* コメント */}
         <span className="reaction">
           <span className="svg-icon">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -53,12 +64,38 @@ export default function PostCard({ userName, text, showDelete = false }: PostCar
           </span>
           100
         </span>
-        <span className="reaction"><span className="emoji-circle">🤣</span> 100</span>
-        <span className="reaction"><span className="emoji-circle">🥲</span> 100</span>
-        <span className="reaction"><span className="emoji-circle">👍</span> 100</span>
+
+        {/* 🤣 ｰ 笑い */}
+        <button 
+          type="button"
+          className={`reaction-button ${activeReaction === "laugh" ? "active-reaction" : ""}`}
+          onClick={() => handleReactionClick("laugh")}
+        >
+          <span className="emoji-circle">🤣</span> 
+          <span className="reaction-count">100</span>
+        </button>
+
+        {/* 🥲 ｰ 泣き */}
+        <button 
+          type="button"
+          className={`reaction-button ${activeReaction === "sad" ? "active-reaction" : ""}`}
+          onClick={() => handleReactionClick("sad")}
+        >
+          <span className="emoji-circle">🥲</span> 
+          <span className="reaction-count">100</span>
+        </button>
+
+        {/* 👍 ｰ いいね */}
+        <button 
+          type="button"
+          className={`reaction-button ${activeReaction === "good" ? "active-reaction" : ""}`}
+          onClick={() => handleReactionClick("good")}
+        >
+          <span className="emoji-circle">👍</span> 
+          <span className="reaction-count">100</span>
+        </button>
       </div>
 
-      {/* ★ 削除確認モーダル（ここに追加） */}
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => setIsDeleteModalOpen(false)}
@@ -71,7 +108,6 @@ export default function PostCard({ userName, text, showDelete = false }: PostCar
         }}
       />
 
-      {/* 以前と同じCSS */}
       <style jsx>{`
         .post-card { width: 100%; box-sizing: border-box; padding: 12px; background-color: #ffffff; border: 1px solid #bdbdbd; border-radius: 14px; }
         .post-header { display: flex; align-items: center; justify-content: space-between; }
@@ -83,10 +119,49 @@ export default function PostCard({ userName, text, showDelete = false }: PostCar
         .post-text { margin: 10px 0; padding-top: 10px; border-top: 1px solid #cfcfcf; font-size: 13px; line-height: 1.4; color: #333333; }
         .post-images { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
         .post-image { aspect-ratio: 1 / 1; display: flex; align-items: center; justify-content: center; background-color: #d9d9d9; font-size: 11px; color: #555555; border-radius: 4px; }
+        
         .reactions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 10px; font-size: 11px; color: #666666; }
         .reaction { display: flex; align-items: center; gap: 4px; }
         .svg-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; }
-        .emoji-circle { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: 1px solid #e3e3e3; border-radius: 50%; background-color: #ffffff; font-size: 12px; }
+
+        /* リアクションボタン（押せるように変更） */
+        .reaction-button {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          background: none;
+          border: none;
+          padding: 0;
+          cursor: pointer;
+          font-size: 11px;
+          color: #666666;
+        }
+
+        .emoji-circle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 22px;
+          height: 22px;
+          border: 1px solid #e3e3e3;
+          border-radius: 50%;
+          background-color: #ffffff;
+          font-size: 12px;
+          transition: all 0.2s ease;
+        }
+
+        /* =========================
+           アクティブ（青色）時のスタイル
+           ========================= */
+        .active-reaction .emoji-circle {
+          border-color: #1d9bf0; /* X（Twitter）っぽい青色 */
+          background-color: #e8f5fe; /* 薄い青の背景 */
+        }
+
+        .active-reaction .reaction-count {
+          color: #1d9bf0; /* 数字も青色にする */
+          font-weight: bold;
+        }
       `}</style>
     </article>
   );
