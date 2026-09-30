@@ -6,6 +6,9 @@ import { usePathname } from "next/navigation";
 export default function Footer() {
   const pathname = usePathname();
 
+  // ★ あとでバックエンドと繋ぐまでの仮変数（trueなら赤丸を表示、falseなら非表示）
+  const hasUnreadNotice = false;
+
   return (
     <>
       <footer className="footer">
@@ -17,7 +20,10 @@ export default function Footer() {
 
         {/* Notice */}
         <Link href="/notice" className="footer-item">
-          <span className={`footer-icon notice-icon ${pathname === "/notice" ? "active-icon" : ""}`}></span>
+          <div className="icon-wrapper">
+            <span className={`footer-icon notice-icon ${pathname === "/notice" ? "active-icon" : ""}`}></span>
+            {hasUnreadNotice && <span className="notice-badge"></span>}
+          </div>
           <span className={`footer-text ${pathname === "/notice" ? "active-text" : ""}`}>Notice</span>
         </Link>
 
@@ -80,13 +86,22 @@ export default function Footer() {
           line-height: 1;
           text-align: center;
           
-          /* 強制的にグレー */
           color: #727272 !important; 
         }
 
         .active-text {
-          /* 現在のページなら強制的に緑 */
           color: #299d48 !important; 
+        }
+
+        /* =========================
+           アイコンと赤丸のラッパー
+           ========================= */
+        .icon-wrapper {
+          position: relative;
+          width: 25px;
+          height: 25px;
+          /* ★枠自体を強制的に中央揃えにする */
+          margin: 0 auto; 
         }
 
         /* =========================
@@ -94,12 +109,11 @@ export default function Footer() {
            ========================= */
         .footer-icon {
           display: block;
-          margin: 0 auto;
-
+          /* ★アイコン自体も強制的に中央揃えにする（元の設定を復活） */
+          margin: 0 auto; 
           width: 25px;
           height: 25px;
 
-          /* 強制的にグレー */
           background-color: #727272 !important;
 
           mask-repeat: no-repeat;
@@ -112,8 +126,20 @@ export default function Footer() {
         }
 
         .active-icon {
-          /* 現在のページなら強制的に緑 */
           background-color: #299d48 !important; 
+        }
+
+        /* =========================
+           通知の赤い丸（バッジ）
+           ========================= */
+        .notice-badge {
+          position: absolute;
+          top: -2px;
+          right: -4px;
+          width: 6px;
+          height: 6px;
+          background-color: #ff3b30;
+          border-radius: 50%;
         }
 
         /* =========================
