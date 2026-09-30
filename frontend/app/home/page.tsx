@@ -4,10 +4,14 @@ import { useState } from "react";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import PostCard from "../components/post-card";
+import NewPost from "./new-post";
 
 export default function Home() {
   // 「new」か「recommend」かを管理する
   const [activeTab, setActiveTab] = useState<"new" | "recommend">("new");
+
+  // モーダルの開閉状態を管理する
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   return (
     <div className="home-page">
@@ -101,12 +105,18 @@ export default function Home() {
           ========================= */}
       <button
         className="new-post-button"
-        onClick={() => {
-          // 投稿画面を作ったら、ここから移動する
-        }}
+        onClick={() => setIsModalOpen(true)}
       >
         ＋
       </button>
+
+      {/* =========================
+          新規投稿モーダル（変更部分）
+          ========================= */}
+      <NewPost 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
 
       {/* フッター */}
       <Footer />
@@ -124,7 +134,9 @@ export default function Home() {
             フッター100px +
             ＋ボタンが重ならないための余白
           */
+          padding-top: 115px;
           padding-bottom: 120px;
+          overflow: hidden;
         }
 
         /* =========================
@@ -133,26 +145,40 @@ export default function Home() {
         .main-content {
           width: 100%;
           max-width: 600px;
+          overflow-y: auto;
 
           margin: 0 auto;
 
           padding: 12px;
 
           box-sizing: border-box;
+
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
 
         /* =========================
            新着・おすすめ ＋ 検索
            ========================= */
         .top-controls {
+          position: fixed; /* ★画面に固定 */
+          top: 70px;      /* ★ヘッダーの高さ分（120px）下に配置 */
+          left: 50%;       /* ★中央に寄せるための基点 */
+          transform: translateX(-50%); /* ★中央揃えの微調整 */
+          
           width: 100%;
+          max-width: 600px; /* main-contentと同じ最大幅 */
 
           display: flex;
           align-items: center;
 
           gap: 10px;
+          padding: 12px;
+          box-sizing: border-box;
 
-          margin-bottom: 10px;
+          background-color: #ffffff; /* ★背景を白にして、下にスクロールした文字が透けないようにする */
+          z-index: 900;             /* ★ヘッダー(1000)より下、コンテンツより上にする */
         }
 
         /* =========================
@@ -241,11 +267,12 @@ export default function Home() {
            投稿一覧
            ========================= */
         .post-list {
+          width: 95%;
           display: flex;
 
           flex-direction: column;
 
-          gap: 10px;
+          gap: 20px;
         }
 
         /* =========================
@@ -259,7 +286,7 @@ export default function Home() {
             そこより少し上に配置する
           */
           right: 20px;
-          bottom: 115px;
+          bottom: 80px;
 
           width: 50px;
           height: 50px;

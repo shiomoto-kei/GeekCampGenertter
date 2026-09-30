@@ -14,7 +14,6 @@ export default function PostCard({
       {/* ユーザー情報 */}
       <div className="user-info">
         <div className="user-icon"></div>
-
         <span className="user-name">{userName}</span>
       </div>
 
@@ -31,10 +30,18 @@ export default function PostCard({
 
       {/* リアクション */}
       <div className="reactions">
-        <span>💬 100</span>
-        <span>😊 100</span>
-        <span>😆 100</span>
-        <span>👍 100</span>
+        <span className="reaction">
+          <span>💬</span> 100
+        </span>
+        <span className="reaction">
+          <span className="emoji-circle">🤣</span> 100
+        </span>
+        <span className="reaction">
+          <span className="emoji-circle">🥲</span> 100
+        </span>
+        <span className="reaction">
+          <span className="emoji-circle">👍</span> 100
+        </span>
       </div>
 
       <style jsx>{`
@@ -83,12 +90,12 @@ export default function PostCard({
            投稿本文
            ========================= */
         .post-text {
+          /* ★上下の余白を調整 */
           margin: 8px 0;
-
-          padding-bottom: 7px;
-
-          border-bottom: 1px solid #cfcfcf;
-
+          
+          padding-top: 8px;
+          border-top: 1px solid #cfcfcf;
+          
           font-size: 12px;
           color: #333333;
         }
@@ -129,8 +136,29 @@ export default function PostCard({
 
           margin-top: 6px;
 
-          font-size: 9px;
+          font-size: 10px;
           color: #666666;
+        }
+
+        .reaction {
+          display: flex;
+          align-items: center;
+          gap: 4px; /* 丸と数字の隙間 */
+        }
+
+        .emoji-circle {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          
+          width: 22px;
+          height: 22px;
+          
+          border: 1px solid #e3e3e3;
+          border-radius: 50%;
+          
+          background-color: #ffffff;
+          font-size: 12px;
         }
       `}</style>
     </article>

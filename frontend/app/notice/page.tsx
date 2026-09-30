@@ -10,59 +10,31 @@ export default function Notice() {
       {/* ヘッダー */}
       <Header />
 
-      {/* 通知タイトル */}
+      {/* メインコンテンツ（ここだけスクロールする） */}
       <main className="notice-main">
+        {/* 通知タイトル */}
         <h1 className="notice-title">
           通知
         </h1>
 
         {/* 通知一覧 */}
         <div className="notification-list">
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="いいねが○○件を超えました。"
-            type="count"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
-
-          <NotificationItem
-            message="いいねが○○件を超えました。"
-            type="count"
-          />
-
-          <NotificationItem
-            message="○○さんがいいねしました。"
-          />
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          
+          <NotificationItem message="いいねが○○件を超えました。" type="count" />
+          
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          <NotificationItem message="○○さんがいいねしました。" />
+          
+          <NotificationItem message="いいねが○○件を超えました。" type="count" />
+          
+          <NotificationItem message="○○さんがいいねしました。" />
+          
         </div>
       </main>
 
@@ -74,74 +46,76 @@ export default function Notice() {
            通知画面全体
            ========================= */
         .notice-page {
-          min-height: 100vh;
-
+          position: relative;
+          width: 100%;
+          max-width: 430px;
+          height: 100dvh; /* 画面の高さいっぱいに固定 */
+          margin: 0 auto;
+          display: flex;
+          flex-direction: column;
           background-color: #ffffff;
-
-          padding-bottom: 100px;
+          overflow: hidden; /* 外側のスクロールを消す */
         }
 
         /* =========================
            通知メイン
            ========================= */
         .notice-main {
+          flex: 1;
+          overflow-y: auto; /* コンテンツ部分だけスクロールさせる */
           width: 100%;
-          max-width: 500px;
-
-          margin: 0 auto;
+          
+          /* ヘッダー(90px)の下、フッター(70px)の上の余白を確保 */
+          padding-top: 90px; 
+          padding-bottom: 90px;
+          box-sizing: border-box;
+          
+          display: flex;
+          flex-direction: column;
+          align-items: center;
         }
 
         /* =========================
            通知タイトル
            ========================= */
         .notice-title {
-          width: 100px;
-          height: 34px;
-
+          width: 120px;
+          height: 43px;
           display: flex;
           align-items: center;
           justify-content: center;
-
-          margin: 14px auto 16px;
-
+          
+          /* 下のリストとの間隔 */
+          margin: 0 auto 20px;
           box-sizing: border-box;
 
-          border: 1px solid #bdbdbd;
-          border-radius: 5px;
-
+          border: 1px solid #cccccc;
+          border-radius: 6px;
           background-color: #ffffff;
 
           font-size: 18px;
           font-weight: normal;
-
-          color: #555555;
-
+          color: #333333;
           position: relative;
+          flex-shrink: 0;
         }
 
-        /*
-          スクショの四隅にある
-          青い小さな点
-        */
+        /* 四隅の青い点 */
         .notice-title::before {
           content: "";
-
           position: absolute;
-
           width: 5px;
           height: 5px;
-
-          top: 3px;
-          left: 3px;
-
+          top: 4px;
+          left: 4px;
           border-radius: 50%;
-
           background-color: #5fc2ea;
-
+          
+          /* 幅120px、高さ38pxに合わせて影の位置を微調整 */
           box-shadow:
-            89px 0 #5fc2ea,
-            0 25px #5fc2ea,
-            89px 25px #5fc2ea;
+            107px 0 #5fc2ea,
+            0 28px #5fc2ea,
+            107px 28px #5fc2ea;
         }
 
         /* =========================
@@ -149,6 +123,10 @@ export default function Notice() {
            ========================= */
         .notification-list {
           width: 100%;
+          /* リストの一番上にも線を引く */
+          border-top: 1px solid #dddddd; 
+          display: flex;
+          flex-direction: column;
         }
       `}</style>
     </div>
