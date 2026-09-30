@@ -50,6 +50,7 @@ export default function MyPage() {
         <div className="post-list">
           <PostCard userName="たになカッター" text="今日の授業まじでだるすぎてくか" showDelete={true}/>
           <PostCard userName="たになカッター" text="今日の授業まじでだるすぎてくか" showDelete={true}/>
+          <PostCard userName="たになカッター" text="今日の授業まじでだるすぎてくか" showDelete={true}/>
         </div>
       </main>
 
