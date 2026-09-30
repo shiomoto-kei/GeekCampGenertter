@@ -1,23 +1,18 @@
 type NotificationItemProps = {
   message: string;
-  type?: "like" | "count";
+  isRead?: boolean;
+  date?: string;
 };
 
 export default function NotificationItem({
   message,
-  type = "like",
+  isRead = true,
+  date,
 }: NotificationItemProps) {
   return (
-    <div
-      className={`notification-item ${
-        type === "count" ? "count-notification" : ""
-      }`}
-    >
-      {type === "like" && <div className="user-icon"></div>}
-
-      <span className="notification-message">
-        {message}
-      </span>
+    <div className={`notification-item ${isRead ? "" : "unread"}`}>
+      <div className="user-icon" aria-hidden="true"></div>
+      <div className="notification-copy"><span className="notification-message">{message}</span>{date && <time className="notification-date">{date}</time>}</div>
 
       <style jsx>{`
         .notification-item {
@@ -35,6 +30,9 @@ export default function NotificationItem({
 
           background-color: #ffffff;
         }
+        .unread { background-color: #eff9f1; }
+        .notification-copy { display: flex; flex-direction: column; gap: 2px; padding: 8px 0; }
+        .notification-date { font-size: 11px; color: #666; }
 
         .user-icon {
           width: 25px;
@@ -54,12 +52,6 @@ export default function NotificationItem({
           color: #222222;
         }
 
-        /* いいね○○件を超えました */
-        .count-notification {
-          padding-left: 25px;
-
-          min-height: 40px;
-        }
       `}</style>
     </div>
   );

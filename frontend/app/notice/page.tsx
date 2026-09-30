@@ -1,10 +1,74 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import NotificationItem from "../components/notification-item";
+import { supabase } from "@/lib/supabase/client";
+
+type NoticeData = {
+  id: number;
+  actorName: string;
+  type: "reply" | "reaction";
+  isRead: boolean;
+  createdAt: string;
+};
 
 export default function Notice() {
+  const [notifications, setNotifications] = useState<NoticeData[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function load() {
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!data.session) return;
+        const response = await fetch("/api/notifications", {
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          cache: "no-store",
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "通知を取得できませんでした。");
+        if (active) {
+          setNotifications(result.notifications);
+          setUnreadCount(result.unreadCount);
+        }
+      } catch (error) {
+        if (active) setErrorMessage(error instanceof Error ? error.message : "通知を取得できませんでした。");
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    load();
+    return () => { active = false; };
+  }, []);
+
+  async function markAllRead() {
+    setUpdating(true);
+    setErrorMessage("");
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) throw new Error("Googleログインが必要です。");
+      const response = await fetch("/api/notifications", {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "既読にできませんでした。");
+      setNotifications((items) => items.map((item) => ({ ...item, isRead: true })));
+      setUnreadCount(0);
+      window.dispatchEvent(new Event("notifications-updated"));
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "既読にできませんでした。");
+    } finally {
+      setUpdating(false);
+    }
+  }
+
   return (
     <div className="notice-page">
       {/* ヘッダー */}
@@ -21,38 +85,19 @@ export default function Notice() {
 
       {/* メインコンテンツ（ここだけスクロールする） */}
       <main className="notice-main">
-        {/* 通知一覧 */}
+        {unreadCount > 0 && <button type="button" className="read-all" onClick={markAllRead} disabled={updating}>すべて既読にする（{unreadCount}件）</button>}
+        {errorMessage && <p role="alert" className="notice-message">{errorMessage}</p>}
+        {loading && <p className="notice-message">通知を読み込み中…</p>}
+        {!loading && !errorMessage && notifications.length === 0 && <p className="notice-message">通知はまだありません</p>}
         <div className="notification-list">
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          <NotificationItem message="○○さんがいいねしました。" />
-          
-          <NotificationItem message="いいねが○○件を超えました。" type="count" />
-          
-          <NotificationItem message="○○さんがいいねしました。" />
+          {notifications.map((item) => (
+            <NotificationItem
+              key={item.id}
+              message={`${item.actorName}さんがあなたの投稿に${item.type === "reply" ? "返信しました" : "リアクションしました"}。`}
+              isRead={item.isRead}
+              date={new Date(item.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
+            />
+          ))}
         </div>
       </main>
 
@@ -165,6 +210,9 @@ export default function Notice() {
           display: flex;
           flex-direction: column;
         }
+        .read-all { align-self: flex-end; margin: 0 16px 12px; border: 0; background: transparent; color: #299d48; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .read-all:disabled { opacity: .5; cursor: wait; }
+        .notice-message { margin: 24px 16px; color: #555; font-size: 14px; text-align: center; }
       `}</style>
     </div>
   );
