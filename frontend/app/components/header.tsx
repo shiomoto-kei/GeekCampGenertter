@@ -17,7 +17,7 @@ export default function Header() {
         {/* ロゴ */}
         <div className="logo">
           <Image
-            src="/genertter-logo.png"
+            src="/genertter_logo.png"
             alt="Genertter"
             width={200}
             height={70}
