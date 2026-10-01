@@ -85,6 +85,42 @@ export default function Home() {
       setIsLoading(true);
       setLoadError(null);
 
+      let matchingAuthorIds: number[] | null = null;
+      if (searchTerm.startsWith("@")) {
+        const accountQuery = searchTerm.slice(1).trim();
+        if (!accountQuery) {
+          if (!cancelled) {
+            setPosts([]);
+            setMyReactions({});
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/users?q=${encodeURIComponent(accountQuery)}`, { cache: "no-store" });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error ?? "ユーザーを検索できませんでした。");
+          matchingAuthorIds = (result.users ?? []).map((user: { id: number }) => user.id);
+        } catch (error) {
+          if (!cancelled) {
+            setLoadError(error instanceof Error ? error.message : "ユーザーを検索できませんでした。");
+            setPosts([]);
+            setMyReactions({});
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        if (cancelled) return;
+        if (matchingAuthorIds.length === 0) {
+          setPosts([]);
+          setMyReactions({});
+          setIsLoading(false);
+          return;
+        }
+      }
+
       let query = supabase
         .from("posts")
         .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
@@ -99,7 +135,9 @@ export default function Home() {
       }
       query = query.limit(50);
 
-      if (searchTerm) {
+      if (matchingAuthorIds !== null) {
+        query = query.in("author_id", matchingAuthorIds);
+      } else if (searchTerm) {
         const safeSearchTerm = searchTerm.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
         query = query.or(
           `converted_text.ilike."%${safeSearchTerm}%",original_text.ilike."%${safeSearchTerm}%"`,
@@ -292,7 +330,7 @@ export default function Home() {
           <form className="search-area" onSubmit={submitSearch}>
             <input
               type="text"
-              placeholder="気になる投稿を検索..."
+              placeholder="投稿検索 / @ユーザー名・ユーザーID"
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
             />
