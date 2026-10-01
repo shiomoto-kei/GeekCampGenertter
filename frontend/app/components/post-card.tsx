@@ -11,6 +11,7 @@ type PostCardProps = {
   iconUrl?: string | null;
   text: string;
   showDelete?: boolean;
+  onDelete?: () => Promise<void>;
   originalText?: string;
   images?: string[];
   tags?: string[];
@@ -30,6 +31,7 @@ export default function PostCard({
   iconUrl = null,
   text,
   showDelete = false,
+  onDelete,
   originalText,
   images = [],
   tags = [],
@@ -45,6 +47,22 @@ export default function PostCard({
   const [openImageIndex, setOpenImageIndex] = useState<number | null>(null);
   const [showOriginalText, setShowOriginalText] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  async function confirmDelete() {
+    if (!onDelete || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await onDelete();
+      setIsDeleteModalOpen(false);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : "投稿を削除できませんでした。");
+    } finally {
+      setIsDeleting(false);
+    }
+  }
 
   useEffect(() => {
     if (openImageIndex === null) return;
@@ -249,14 +267,11 @@ export default function PostCard({
 
       <ConfirmModal
         isOpen={isDeleteModalOpen}
-        onClose={() => setIsDeleteModalOpen(false)}
+        onClose={() => { if (!isDeleting) { setIsDeleteModalOpen(false); setDeleteError(""); } }}
         title="投稿の削除"
-        message="削除してもよろしいですか？"
-        confirmText="削除する"
-        onConfirm={() => {
-          console.log("削除処理");
-          setIsDeleteModalOpen(false);
-        }}
+        message={deleteError || "削除してもよろしいですか？返信は単独の投稿として残ります。"}
+        confirmText={isDeleting ? "削除中…" : "削除する"}
+        onConfirm={() => { void confirmDelete(); }}
       />
 
       <style jsx>{`
