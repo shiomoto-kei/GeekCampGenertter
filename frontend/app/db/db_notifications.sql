@@ -1,6 +1,6 @@
 -- db_setup.sql の後に、正しい Supabase プロジェクトの SQL Editor で実行する。
 -- 通知はサーバー側 API からのみ読み書き可能にする。
--- posts 自体の RLS は変更しない。返信・リアクション INSERT 時に通知トリガーが動く。
+-- posts 自体の RLS は変更しない。返信・リアクション時に通知トリガーが動く。
 
 BEGIN;
 
@@ -47,6 +47,11 @@ AS $$
 DECLARE
   recipient BIGINT;
 BEGIN
+  -- 同じリアクションの更新では通知を重ねて作らない。
+  IF TG_OP = 'UPDATE' AND OLD.reaction_type_id IS NOT DISTINCT FROM NEW.reaction_type_id THEN
+    RETURN NEW;
+  END IF;
+
   SELECT post.author_id INTO recipient
   FROM public.posts AS post
   JOIN public.users AS owner ON owner.id = post.author_id
@@ -62,7 +67,7 @@ $$;
 
 DROP TRIGGER IF EXISTS create_reaction_notification_trigger ON public.post_reactions;
 CREATE TRIGGER create_reaction_notification_trigger
-AFTER INSERT ON public.post_reactions
+AFTER INSERT OR UPDATE ON public.post_reactions
 FOR EACH ROW EXECUTE FUNCTION public.create_reaction_notification();
 
 COMMIT;
