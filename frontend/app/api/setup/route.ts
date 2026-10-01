@@ -43,9 +43,12 @@ export async function POST(request: NextRequest) {
   const input = body as Record<string, unknown>;
   const name = typeof input.name === "string" ? input.name.trim() : "";
   const styleId = input.styleId;
+  const iconId = input.iconId == null ? null : input.iconId;
   const mode = input.mode;
 
-  if (!name || name.length > 50 || typeof styleId !== "number" || !Number.isSafeInteger(styleId) || styleId <= 0 || (mode !== "google" && mode !== "guest")) {
+  if (!name || name.length > 50 || typeof styleId !== "number" || !Number.isSafeInteger(styleId) || styleId <= 0 ||
+      (iconId !== null && (typeof iconId !== "number" || !Number.isSafeInteger(iconId) || iconId <= 0)) ||
+      (mode !== "google" && mode !== "guest")) {
     return NextResponse.json({ error: "名前とスタイルを確認してください。" }, { status: 400 });
   }
 
@@ -63,6 +66,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "選択されたスタイルが見つかりません。" }, { status: 400 });
   }
 
+  if (iconId !== null) {
+    const { data: icon, error: iconError } = await admin.from("icons").select("id").eq("id", iconId).maybeSingle();
+    if (iconError || !icon) {
+      return NextResponse.json({ error: "選択されたアイコンが見つかりません。" }, { status: 400 });
+    }
+  }
+
+  const profile = { name, default_style_id: styleId, ...(iconId !== null ? { icon_id: iconId } : {}) };
+
   if (mode === "google") {
     const accessToken = input.accessToken;
     if (typeof accessToken !== "string" || !accessToken) {
@@ -76,7 +88,7 @@ export async function POST(request: NextRequest) {
 
     const { data, error } = await admin
       .from("users")
-      .upsert({ google_sub: googleSub, name, default_style_id: styleId }, { onConflict: "google_sub" })
+      .upsert({ google_sub: googleSub, ...profile }, { onConflict: "google_sub" })
       .select("id")
       .single();
 
@@ -90,7 +102,7 @@ export async function POST(request: NextRequest) {
   const guestUuid = cookieValue && UUID_PATTERN.test(cookieValue) ? cookieValue : randomUUID();
   const { data, error } = await admin
     .from("users")
-    .upsert({ guest_uuid: guestUuid, name, default_style_id: styleId }, { onConflict: "guest_uuid" })
+    .upsert({ guest_uuid: guestUuid, ...profile }, { onConflict: "guest_uuid" })
     .select("id")
     .single();
 

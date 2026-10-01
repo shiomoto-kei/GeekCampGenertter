@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await admin
     .from("users")
-    .select("id,name,default_style_id")
+    .select("id,name,default_style_id,icon_id")
     .eq(column, identity)
     .maybeSingle();
 
