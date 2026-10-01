@@ -1,17 +1,19 @@
 type NotificationItemProps = {
   message: string;
+  iconUrl?: string | null;
   isRead?: boolean;
   date?: string;
 };
 
 export default function NotificationItem({
   message,
+  iconUrl = null,
   isRead = true,
   date,
 }: NotificationItemProps) {
   return (
     <div className={`notification-item ${isRead ? "" : "unread"}`}>
-      <div className="user-icon" aria-hidden="true"></div>
+      <div className="user-icon" aria-hidden="true">{iconUrl && <img src={iconUrl} alt="" />}</div>
       <div className="notification-copy"><span className="notification-message">{message}</span>{date && <time className="notification-date">{date}</time>}</div>
 
       <style jsx>{`
@@ -45,6 +47,14 @@ export default function NotificationItem({
           background-color: #d9d9d9;
 
           border-radius: 50%;
+          overflow: hidden;
+        }
+
+        .user-icon img {
+          display: block;
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
         }
 
         .notification-message {

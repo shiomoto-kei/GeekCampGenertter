@@ -244,18 +244,30 @@ export default function Home() {
         setPosts(mappedPosts);
 
         const { data: sessionData } = await supabase.auth.getSession();
-        if (sessionData.session && mappedPosts.length > 0) {
-          const { data: reactionData } = await supabase.rpc("get_my_post_reactions", {
-            p_post_ids: mappedPosts.map((post) => post.id),
-          });
+        if (mappedPosts.length > 0) {
+          const reactionResponse = await fetch(
+            `/api/reactions?postIds=${mappedPosts.map((post) => post.id).join(",")}`,
+            {
+              headers: sessionData.session
+                ? { Authorization: `Bearer ${sessionData.session.access_token}` }
+                : {},
+              cache: "no-store",
+            },
+          );
+          const reactionResult = await reactionResponse.json();
           if (cancelled) return;
-          const selected: Record<number, ReactionCode> = {};
-          for (const reaction of (reactionData ?? []) as { post_id: number; reaction_code: string }[]) {
-            if (["like", "laugh", "sad"].includes(reaction.reaction_code)) {
-              selected[reaction.post_id] = reaction.reaction_code as ReactionCode;
+          if (!reactionResponse.ok) {
+            setReactionError(reactionResult.error ?? "リアクションを取得できませんでした。");
+            setMyReactions({});
+          } else {
+            const selected: Record<number, ReactionCode> = {};
+            for (const reaction of (reactionResult.reactions ?? []) as { post_id: number; reaction_code: string }[]) {
+              if (["like", "laugh", "sad"].includes(reaction.reaction_code)) {
+                selected[reaction.post_id] = reaction.reaction_code as ReactionCode;
+              }
             }
+            setMyReactions(selected);
           }
-          setMyReactions(selected);
         } else {
           setMyReactions({});
         }
@@ -326,24 +338,24 @@ export default function Home() {
     try {
       const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
-      if (!sessionData.session) {
-        const { error } = await supabase.auth.signInAnonymously();
-        if (error) throw error;
-      }
-
-      const { data: count, error } = await supabase.rpc("toggle_post_reaction", {
-        p_post_id: postId,
-        p_reaction_code: code,
+      const response = await fetch("/api/reactions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(sessionData.session ? { Authorization: `Bearer ${sessionData.session.access_token}` } : {}),
+        },
+        body: JSON.stringify({ postId, code }),
       });
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "リアクションを保存できませんでした。");
 
       const previousCode = myReactions[postId];
       setPosts((current) => current.map((post) =>
         post.id === postId ? {
           ...post,
-          like_count: post.like_count + (code === "like" ? Number(count) - post.like_count : previousCode === "like" ? -1 : 0),
-          laugh_count: post.laugh_count + (code === "laugh" ? Number(count) - post.laugh_count : previousCode === "laugh" ? -1 : 0),
-          sad_count: post.sad_count + (code === "sad" ? Number(count) - post.sad_count : previousCode === "sad" ? -1 : 0),
+          like_count: post.like_count + (code === "like" ? Number(result.count) - post.like_count : previousCode === "like" ? -1 : 0),
+          laugh_count: post.laugh_count + (code === "laugh" ? Number(result.count) - post.laugh_count : previousCode === "laugh" ? -1 : 0),
+          sad_count: post.sad_count + (code === "sad" ? Number(result.count) - post.sad_count : previousCode === "sad" ? -1 : 0),
         } : post,
       ));
       setMyReactions((current) => {
@@ -353,16 +365,7 @@ export default function Home() {
         return next;
       });
     } catch (error) {
-      const message = error instanceof Error
-        ? error.message
-        : error && typeof error === "object" && "message" in error
-          ? String(error.message)
-          : "";
-      setReactionError(
-        /anonymous|anonymous sign-in|匿名/i.test(message)
-          ? "ゲストのリアクションを使うには、Supabaseの Authentication → Sign In / Providers で Anonymous Sign-Ins を有効にしてください。"
-          : message || "リアクションを保存できませんでした。",
-      );
+      setReactionError(error instanceof Error ? error.message : "リアクションを保存できませんでした。");
     } finally {
       setPendingReaction(null);
     }

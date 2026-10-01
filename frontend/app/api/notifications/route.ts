@@ -46,18 +46,33 @@ export async function GET(request: NextRequest) {
   }
 
   const actorIds = [...new Set((data ?? []).flatMap((item) => item.actor_id == null ? [] : [item.actor_id]))];
-  const actorNames = new Map<number, string>();
+  const actorProfiles = new Map<number, { name: string; iconPath: string | null }>();
   if (actorIds.length) {
-    const { data: actors, error: actorError } = await recipient.admin.from("users").select("id,name").in("id", actorIds);
+    const { data: actors, error: actorError } = await recipient.admin.from("users").select("id,name,icon_id").in("id", actorIds);
     if (actorError) return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
-    for (const actor of actors ?? []) actorNames.set(actor.id, actor.name);
+
+    const iconIds = [...new Set((actors ?? []).flatMap((actor) => actor.icon_id == null ? [] : [actor.icon_id]))];
+    const iconPaths = new Map<number, string>();
+    if (iconIds.length) {
+      const { data: icons, error: iconError } = await recipient.admin.from("icons").select("id,image_path").in("id", iconIds);
+      if (iconError) return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
+      for (const icon of icons ?? []) iconPaths.set(icon.id, icon.image_path);
+    }
+
+    for (const actor of actors ?? []) {
+      actorProfiles.set(actor.id, {
+        name: actor.name,
+        iconPath: actor.icon_id == null ? null : iconPaths.get(actor.icon_id) ?? null,
+      });
+    }
   }
 
   return NextResponse.json({
     unreadCount: count ?? 0,
     notifications: (data ?? []).map((item) => ({
       id: item.id,
-      actorName: item.actor_id == null ? "ユーザー" : actorNames.get(item.actor_id) ?? "ユーザー",
+      actorName: item.actor_id == null ? "ユーザー" : actorProfiles.get(item.actor_id)?.name ?? "ユーザー",
+      actorIconPath: item.actor_id == null ? null : actorProfiles.get(item.actor_id)?.iconPath ?? null,
       type: item.notification_type,
       postId: item.post_id,
       isRead: item.is_read,

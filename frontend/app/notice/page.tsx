@@ -5,10 +5,12 @@ import Header from "../components/header";
 import Footer from "../components/footer";
 import NotificationItem from "../components/notification-item";
 import { supabase } from "@/lib/supabase/client";
+import { iconImageUrl } from "@/lib/icons";
 
 type NoticeData = {
   id: number;
   actorName: string;
+  actorIconPath: string | null;
   type: "reply" | "reaction";
   isRead: boolean;
   createdAt: string;
@@ -94,6 +96,7 @@ export default function Notice() {
             <NotificationItem
               key={item.id}
               message={`${item.actorName}さんがあなたの投稿に${item.type === "reply" ? "返信しました" : "リアクションしました"}。`}
+              iconUrl={iconImageUrl(item.actorIconPath)}
               isRead={item.isRead}
               date={new Date(item.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
             />
