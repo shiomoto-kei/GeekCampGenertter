@@ -15,6 +15,7 @@ type PostCardProps = {
   originalText?: string;
   images?: string[];
   tags?: string[];
+  onTagClick?: (tag: string) => void;
   replyCount?: number;
   laughCount?: number;
   sadCount?: number;
@@ -35,6 +36,7 @@ export default function PostCard({
   originalText,
   images = [],
   tags = [],
+  onTagClick,
   replyCount = 0,
   laughCount = 0,
   sadCount = 0,
@@ -211,7 +213,9 @@ export default function PostCard({
 
       {tags.length > 0 && (
         <div className="post-tags">
-          {tags.map((tag) => <span key={tag}>#{tag}</span>)}
+          {tags.map((tag) => onTagClick ? (
+            <button key={tag} type="button" onClick={() => onTagClick(tag)}>#{tag}</button>
+          ) : <span key={tag}>#{tag}</span>)}
         </div>
       )}
 
@@ -429,10 +433,19 @@ export default function PostCard({
           gap: 6px;
           margin-top: 7px;
         }
-        .post-tags span {
+        .post-tags span,
+        .post-tags button {
           color: #16833c;
           font-size: 11px;
         }
+        .post-tags button {
+          padding: 0;
+          border: 0;
+          background: transparent;
+          font: inherit;
+          cursor: pointer;
+        }
+        .post-tags button:hover { text-decoration: underline; }
         .reactions {
           display: flex;
           justify-content: flex-end;
