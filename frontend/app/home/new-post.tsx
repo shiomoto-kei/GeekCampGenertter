@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { ALLOWED_POST_IMAGE_TYPES, MAX_POST_IMAGE_COUNT, preparePostImage, validatePostImage } from "@/lib/post-images";
 
 type StyleProfile = { id: number; name: string };
 
@@ -14,10 +15,6 @@ type NewPostProps = {
   onClose: () => void;
   onCreated: () => void;
 };
-
-const MAX_IMAGE_COUNT = 4;
-const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 async function getSessionOrGuest() {
   const current = await supabase.auth.getSession();
@@ -36,7 +33,12 @@ function getErrorMessage(error: unknown) {
   return "投稿を保存できませんでした。";
 }
 
-export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = null, currentUser = null, onClose, onCreated }: NewPostProps) {
+export default function NewPost({ isOpen, ...props }: NewPostProps) {
+  if (!isOpen) return null;
+  return <NewPostContent {...props} />;
+}
+
+function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUser = null, onClose, onCreated }: Omit<NewPostProps, "isOpen">) {
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [styleId, setStyleId] = useState("");
   const [originalText, setOriginalText] = useState("");
@@ -47,19 +49,10 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
   const [isLoadingStyles, setIsLoadingStyles] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStage, setSubmitStage] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) {
-      setOriginalText("");
-      setConvertedText("");
-      setStyleId("");
-      setHashtags("");
-      setImages([]);
-      setErrorMessage(null);
-      return;
-    }
-
     let cancelled = false;
     async function loadStyles() {
       setIsLoadingStyles(true);
@@ -86,9 +79,7 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
     return () => {
       cancelled = true;
     };
-  }, [defaultStyleId, isOpen]);
-
-  if (!isOpen) return null;
+  }, [defaultStyleId]);
 
   function updateOriginalText(value: string) {
     setOriginalText(value);
@@ -149,11 +140,18 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
     const bucket = "post-images";
     const uploadedPaths: string[] = [];
     try {
+      const preparedImages: File[] = [];
+      for (const [index, file] of images.entries()) {
+        setSubmitStage(`画像を最適化中…（${index + 1}/${images.length}）`);
+        preparedImages.push(await preparePostImage(file));
+      }
+
       const session = await getSessionOrGuest();
 
-      for (const file of images) {
-        const safeName = file.name.replace(/[^\w.-]/g, "_");
-        const path = `${session.user.id}/${crypto.randomUUID()}-${safeName}`;
+      for (const [index, file] of preparedImages.entries()) {
+        setSubmitStage(`画像をアップロード中…（${index + 1}/${preparedImages.length}）`);
+        const extension = file.type === "image/gif" ? "gif" : file.type === "image/png" ? "png" : file.type === "image/jpeg" ? "jpg" : "webp";
+        const path = `${session.user.id}/${crypto.randomUUID()}.${extension}`;
         const { data, error } = await supabase.storage.from(bucket).upload(path, file, {
           contentType: file.type,
           cacheControl: "3600",
@@ -168,6 +166,7 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
         .map((tag) => tag.replace(/^#+/, "").trim())
         .filter(Boolean);
 
+      setSubmitStage("投稿を保存中…");
       const response = await fetch("/api/posts", {
         method: "POST",
         headers: {
@@ -197,13 +196,14 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
       );
     } finally {
       setIsSubmitting(false);
+      setSubmitStage("");
     }
   }
 
   return (
     <>
-      <div className="modal-overlay" onClick={onClose}>
-        <form className="modal-content" onClick={(event) => event.stopPropagation()} onSubmit={submitPost}>
+      <div className="modal-overlay" onClick={() => { if (!isSubmitting) onClose(); }}>
+        <form className="modal-content" aria-busy={isSubmitting} onClick={(event) => event.stopPropagation()} onSubmit={submitPost}>
           <div className="modal-title-wrapper">
             <span className="modal-title-dots-right" />
           <h2 className="modal-title">{parentPostId ? "返信を投稿" : "新規投稿"}</h2>
@@ -237,18 +237,19 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
           />
 
           {!parentPostId && <>
-            <label className="field-label" htmlFor="post-images">写真（{images.length}/4枚・1枚5MBまで）</label>
+            <label className="field-label" htmlFor="post-images">写真（{images.length}/4枚・元画像は1枚5MBまで）</label>
             <input
               ref={imageInputRef}
               id="post-images"
               type="file"
-              accept={ALLOWED_IMAGE_TYPES.join(",")}
+              accept={ALLOWED_POST_IMAGE_TYPES.join(",")}
               multiple
+              disabled={isSubmitting}
               onChange={(event) => {
                 const selected = Array.from(event.target.files ?? []);
-                const invalid = selected.find((file) => !ALLOWED_IMAGE_TYPES.includes(file.type) || file.size > MAX_IMAGE_SIZE);
+                const invalid = selected.map(validatePostImage).find((message) => message !== null);
                 if (invalid) {
-                  setErrorMessage("写真はJPEG・PNG・WebP・GIFで、1枚5MB以内にしてください。");
+                  setErrorMessage(invalid);
                   event.target.value = "";
                   return;
                 }
@@ -259,7 +260,7 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
                   existingKeys.add(key);
                   return true;
                 });
-                const availableSlots = MAX_IMAGE_COUNT - images.length;
+                const availableSlots = MAX_POST_IMAGE_COUNT - images.length;
                 setImages((current) => [...current, ...additions.slice(0, availableSlots)]);
                 setErrorMessage(additions.length > availableSlots ? "写真は4枚まで選べます。選択済みの写真を外すと追加できます。" : null);
                 event.target.value = "";
@@ -268,15 +269,16 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
               tabIndex={-1}
               aria-hidden="true"
             />
-            <button className="image-picker-button" type="button" onClick={() => imageInputRef.current?.click()}>
+            <button className="image-picker-button" type="button" disabled={isSubmitting} onClick={() => imageInputRef.current?.click()}>
               <span aria-hidden="true">📷</span> 写真を追加
             </button>
+            <p className="image-hint">静止画は投稿前に自動圧縮します。圧縮できない場合は元画像のまま投稿します。アニメーション画像は動きを維持します（1枚5MBまで）。</p>
             {images.length > 0 && <ul className="selected-images">
               {images.map((file, index) => <li key={`${file.name}-${index}`}>
                 {file.name}
-                <button type="button" onClick={() => setImages((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`${file.name}を削除`}>削除</button>
+                <button type="button" disabled={isSubmitting} onClick={() => setImages((current) => current.filter((_, itemIndex) => itemIndex !== index))} aria-label={`${file.name}を削除`}>削除</button>
               </li>)}
-              <li><button type="button" className="clear-images" onClick={() => { setImages([]); setErrorMessage(null); }}>写真をすべて外す</button></li>
+              <li><button type="button" className="clear-images" disabled={isSubmitting} onClick={() => { setImages([]); setErrorMessage(null); }}>写真をすべて外す</button></li>
             </ul>}
           </>}
 
@@ -319,7 +321,7 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
 
           <div className="submit-area">
             <button className="submit-button" type="submit" disabled={isSubmitting || isLoadingStyles || styles.length === 0}>
-              {isSubmitting ? "投稿中..." : parentPostId ? "返信する" : "投稿！"}
+              {isSubmitting ? submitStage || "投稿中..." : parentPostId ? "返信する" : "投稿！"}
             </button>
           </div>
         </form>
@@ -392,6 +394,7 @@ export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = 
         .visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
         .image-picker-button { align-self: flex-start; display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 15px; border: 1px solid #68c5ed; border-radius: 9px; background: #eefaff; color: #24789a; font-size: 13px; font-weight: 600; cursor: pointer; }
         .image-picker-button:hover { background: #dff5ff; }
+        .image-hint { margin: -4px 0 2px; color: #777; font-size: 10px; }
         .selected-images { margin: 0; padding-left: 20px; font-size: 12px; color: #555; }
         .selected-images li { padding: 2px 0; overflow-wrap: anywhere; }
         .selected-images button { margin-left: 8px; border: 0; background: transparent; color: #b42318; cursor: pointer; }
