@@ -90,7 +90,57 @@ export default function Home() {
       setLoadError(null);
 
       let matchingAuthorIds: number[] | null = null;
-      if (searchTerm.startsWith("@")) {
+      let matchingPostIds: number[] | null = null;
+      if (searchTerm.startsWith("#")) {
+        const tagQuery = searchTerm.slice(1).trim().replace(/^#+/, "");
+        if (!tagQuery) {
+          if (!cancelled) {
+            setPosts([]);
+            setMyReactions({});
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        try {
+          const safeTag = tagQuery.replace(/[\\%_]/g, "\\$&");
+          const { data: hashtags, error: hashtagError } = await supabase
+            .from("hashtags")
+            .select("id")
+            .ilike("tag_name", safeTag)
+            .limit(50);
+          if (hashtagError) throw hashtagError;
+          const hashtagIds = (hashtags ?? []).map((hashtag) => hashtag.id);
+          if (hashtagIds.length > 0) {
+            const { data: postLinks, error: linksError } = await supabase
+              .from("post_hashtags")
+              .select("post_id")
+              .in("hashtag_id", hashtagIds)
+              .limit(50);
+            if (linksError) throw linksError;
+            matchingPostIds = [...new Set((postLinks ?? []).map((link) => link.post_id))];
+          } else {
+            matchingPostIds = [];
+          }
+        } catch (error) {
+          if (!cancelled) {
+            const message = error instanceof Error ? error.message : "ハッシュタグを検索できませんでした。";
+            setLoadError(message);
+            setPosts([]);
+            setMyReactions({});
+            setIsLoading(false);
+          }
+          return;
+        }
+
+        if (cancelled) return;
+        if (!matchingPostIds || matchingPostIds.length === 0) {
+          setPosts([]);
+          setMyReactions({});
+          setIsLoading(false);
+          return;
+        }
+      } else if (searchTerm.startsWith("@")) {
         const accountQuery = searchTerm.slice(1).trim();
         if (!accountQuery) {
           if (!cancelled) {
@@ -139,7 +189,9 @@ export default function Home() {
       }
       query = query.limit(50);
 
-      if (matchingAuthorIds !== null) {
+      if (matchingPostIds !== null) {
+        query = query.in("id", matchingPostIds);
+      } else if (matchingAuthorIds !== null) {
         query = query.in("author_id", matchingAuthorIds);
       } else if (searchTerm) {
         const safeSearchTerm = searchTerm.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -220,6 +272,12 @@ export default function Home() {
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSearchTerm(searchInput.trim());
+  }
+
+  function searchHashtag(tag: string) {
+    const query = `#${tag.replace(/^#+/, "")}`;
+    setSearchInput(query);
+    setSearchTerm(query);
   }
 
   async function toggleReplies(postId: number) {
@@ -352,7 +410,7 @@ export default function Home() {
           <form className="search-area" onSubmit={submitSearch}>
             <input
               type="text"
-              placeholder="投稿検索 / @ユーザー名・ユーザーID"
+              placeholder="投稿・#タグ / @ユーザー名・IDを検索"
               value={searchInput}
               onChange={(event) => setSearchInput(event.target.value)}
             />
@@ -385,6 +443,7 @@ export default function Home() {
                   originalText={post.original_text}
                   images={post.images}
                   tags={post.tags}
+                  onTagClick={searchHashtag}
                   replyCount={post.reply_count}
                   laughCount={post.laugh_count}
                   sadCount={post.sad_count}
