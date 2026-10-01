@@ -1,171 +1,108 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import IconPicker from "./icon-picker";
+import { supabase } from "@/lib/supabase/client";
+import type { IconOption } from "@/lib/icons";
+
 type ProfileModalProps = {
   isOpen: boolean;
+  currentIconId: number | null;
+  isGuest: boolean;
   onClose: () => void;
+  onSaved: (iconId: number, imagePath: string) => void;
 };
 
-export default function ProfileModal({ isOpen, onClose }: ProfileModalProps) {
+export default function ProfileModal({ isOpen, currentIconId, isGuest, onClose, onSaved }: ProfileModalProps) {
   if (!isOpen) return null;
+  return <ProfileModalContent currentIconId={currentIconId} isGuest={isGuest} onClose={onClose} onSaved={onSaved} />;
+}
+
+function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<ProfileModalProps, "isOpen">) {
+  const [icons, setIcons] = useState<IconOption[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(currentIconId);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadIcons() {
+      try {
+        const response = await fetch("/api/icons", { signal: controller.signal, cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.icons)) throw new Error(result.error ?? "アイコン一覧を取得できませんでした。");
+        if (!controller.signal.aborted) setIcons(result.icons as IconOption[]);
+      } catch (error) {
+        if (!controller.signal.aborted) setErrorMessage(error instanceof Error ? error.message : "アイコン一覧を取得できませんでした。");
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    }
+
+    void loadIcons();
+    return () => controller.abort();
+  }, []);
+
+  async function saveIcon() {
+    if (selectedId === null) {
+      setErrorMessage("アイコンを選んでください。");
+      return;
+    }
+    setErrorMessage("");
+    setIsSaving(true);
+    try {
+      let accessToken: string | null = null;
+      if (!isGuest) {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!data.session) throw new Error("Googleログインを確認できませんでした。");
+        accessToken = data.session.access_token;
+      }
+      const response = await fetch("/api/profile/icon", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ iconId: selectedId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "アイコンを保存できませんでした。");
+      onSaved(result.iconId as number, result.imagePath as string);
+      onClose();
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "アイコンを保存できませんでした。");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
-    <>
-      <div className="modal-overlay" onClick={onClose}>
-        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-          
-          {/* タイトル枠 */}
-          <div className="modal-title-wrapper">
-            <span className="modal-title-dots-right"></span>
-            <h2 className="modal-title">プロフィール</h2>
-          </div>
-
-          {/* アイコンと性別・年齢 */}
-          <div className="profile-edit-top">
-            <div className="edit-icon"></div>
-            <div className="edit-inputs">
-              <label>
-                性別：<input type="text" className="small-input" />
-              </label>
-              <label>
-                年齢：<input type="text" className="small-input" />
-              </label>
-            </div>
-          </div>
-
-          {/* 名前入力 */}
-          <div className="name-input-area">
-            <input type="text" className="name-input" defaultValue="たになカッター" />
-          </div>
-
-          {/* 保存ボタン */}
-          <div className="submit-area">
-            <button type="button" className="save-button" onClick={onClose}>保存</button>
-          </div>
-
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" role="dialog" aria-modal="true" aria-label="アイコンを変更" onClick={(event) => event.stopPropagation()}>
+        <h2>アイコンを変更</h2>
+        {isLoading ? <p>アイコンを読み込み中…</p> : <IconPicker icons={icons} selectedId={selectedId} onSelect={setSelectedId} name="profile-icon" />}
+        {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
+        <div className="actions">
+          <button type="button" onClick={onClose}>キャンセル</button>
+          <button type="button" className="save-button" onClick={() => void saveIcon()} disabled={isLoading || isSaving || selectedId === null}>
+            {isSaving ? "保存中…" : "保存"}
+          </button>
         </div>
       </div>
-
       <style jsx>{`
-        .modal-overlay {
-          position: fixed;
-          top: 70px;
-          bottom: 70px;
-          left: 0;
-          right: 0;
-          background-color: rgba(255, 255, 255, 0.85);
-          z-index: 2000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .modal-content {
-          width: 80%;
-          max-width: 320px;
-          background-color: #ffffff;
-          border: 2px solid #299d48;
-          border-radius: 20px;
-          padding: 24px 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 16px;
-          box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-        }
-
-        .modal-title-wrapper {
-          position: relative;
-          border: 1px solid #cccccc;
-          border-radius: 6px;
-          padding: 8px 0;
-          text-align: center;
-          margin: 0 auto;
-          width: 80%;
-        }
-
-        .modal-title {
-          font-size: 18px;
-          font-weight: bold;
-          color: #333;
-          margin: 0;
-        }
-
-        .modal-title-wrapper::before, .modal-title-wrapper::after,
-        .modal-title-dots-right::before, .modal-title-dots-right::after {
-          content: "";
-          position: absolute;
-          width: 4px;
-          height: 4px;
-          background-color: #5fc2ea;
-          border-radius: 50%;
-        }
-        .modal-title-wrapper::before { left: 6px; top: 6px; }
-        .modal-title-wrapper::after { left: 6px; bottom: 6px; }
-        .modal-title-dots-right::before { right: 6px; top: 6px; }
-        .modal-title-dots-right::after { right: 6px; bottom: 6px; }
-
-        .profile-edit-top {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 16px;
-        }
-
-        .edit-icon {
-          width: 50px;
-          height: 50px;
-          border-radius: 50%;
-          background-color: #d9d9d9;
-        }
-
-        .edit-inputs {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          font-size: 14px;
-          color: #333;
-        }
-
-        .small-input {
-          width: 45px;
-          height: 22px;
-          border: 1px solid #727272;
-          border-radius: 6px;
-          outline: none;
-        }
-
-        .name-input-area {
-          display: flex;
-          justify-content: center;
-        }
-
-        .name-input {
-          width: 80%;
-          border: none;
-          border-bottom: 1px solid #727272;
-          text-align: center;
-          font-size: 16px;
-          padding: 4px;
-          outline: none;
-          color: #111;
-        }
-
-        .submit-area {
-          display: flex;
-          justify-content: center;
-          margin-top: 8px;
-        }
-
-        .save-button {
-          background-color: #aee68c;
-          color: #333;
-          border: none;
-          border-radius: 8px;
-          padding: 8px 32px;
-          font-size: 14px;
-          font-weight: bold;
-          cursor: pointer;
-        }
+        .modal-overlay { position: fixed; inset: 70px 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(255,255,255,.85); }
+        .modal-content { width: min(100%, 360px); max-height: 100%; overflow-y: auto; padding: 24px 20px; border: 2px solid #299d48; border-radius: 20px; background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,.1); }
+        h2 { margin: 0 0 18px; text-align: center; font-size: 18px; color: #333; }
+        p { margin: 8px 0; font-size: 14px; color: #333; }
+        .error-message { color: #a31313; }
+        .actions { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
+        button { padding: 8px 16px; border: 1px solid #aaa; border-radius: 8px; background: #fff; color: #333; cursor: pointer; }
+        .save-button { border-color: #aee68c; background: #aee68c; font-weight: 700; }
+        button:disabled { opacity: .6; cursor: not-allowed; }
       `}</style>
-    </>
+    </div>
   );
 }

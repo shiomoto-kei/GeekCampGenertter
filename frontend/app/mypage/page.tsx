@@ -9,6 +9,7 @@ import PostCard from "../components/post-card";
 import ProfileModal from "../components/profile-modal";
 import ConfirmModal from "../components/confirm-modal";
 import { supabase } from "@/lib/supabase/client";
+import { iconImageUrl, type IconOption } from "@/lib/icons";
 
 export default function MyPage() {
   const router = useRouter();
@@ -16,6 +17,8 @@ export default function MyPage() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false);
   const [profileName, setProfileName] = useState("読み込み中…");
+  const [profileIconId, setProfileIconId] = useState<number | null>(null);
+  const [profileIconPath, setProfileIconPath] = useState<string | null>(null);
   const [styleName, setStyleName] = useState("");
   const [loginLabel, setLoginLabel] = useState("");
   const [isGuest, setIsGuest] = useState(false);
@@ -27,11 +30,15 @@ export default function MyPage() {
     async function loadProfile() {
       try {
         const { data } = await supabase.auth.getSession();
-        const mode = data.session ? "google" : "guest";
-        const response = await fetch(`/api/session?mode=${mode}`, {
+        let mode: "google" | "guest" = data.session ? "google" : "guest";
+        let response = await fetch(`/api/session?mode=${mode}`, {
           headers: data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {},
           cache: "no-store",
         });
+        if (mode === "google" && response.status === 401) {
+          mode = "guest";
+          response = await fetch("/api/session?mode=guest", { cache: "no-store" });
+        }
         const result = await response.json();
         if (!response.ok || !result.exists) return;
 
@@ -39,11 +46,22 @@ export default function MyPage() {
         const stylesResult = await stylesResponse.json();
         const selectedStyle = stylesResult.styles?.find((style: { id: number }) => style.id === result.profile.default_style_id);
 
+        let imagePath: string | null = null;
+        if (result.profile.icon_id) {
+          const iconsResponse = await fetch("/api/icons", { cache: "no-store" });
+          if (iconsResponse.ok) {
+            const iconsResult = await iconsResponse.json();
+            imagePath = (iconsResult.icons as IconOption[] | undefined)?.find((icon) => icon.id === result.profile.icon_id)?.image_path ?? null;
+          }
+        }
+
         if (active) {
           setProfileName(result.profile.name);
+          setProfileIconId(result.profile.icon_id ?? null);
+          setProfileIconPath(imagePath);
           setStyleName(selectedStyle?.name ?? "スタイル未設定");
-          setLoginLabel(data.session?.user.email ?? "ゲスト利用中");
-          setIsGuest(!data.session);
+          setLoginLabel(mode === "google" ? data.session?.user.email ?? "Googleログイン中" : "ゲスト利用中");
+          setIsGuest(mode === "guest");
         }
       } catch {
         if (active) setProfileName("プロフィールを読み込めませんでした");
@@ -78,7 +96,9 @@ export default function MyPage() {
         <section className="profile-frame">
           <div className="profile-inner">
             <div className="profile-row">
-              <div className="profile-icon"></div>
+              <div className="profile-icon">
+                {profileIconPath && <img src={iconImageUrl(profileIconPath) ?? ""} alt="設定中のアイコン" />}
+              </div>
               <div className="profile-name-area">
                 <span className="profile-name">{profileName}</span>
                 <span className="profile-age">{styleName}</span>
@@ -93,7 +113,7 @@ export default function MyPage() {
             <div className="profile-buttons">
               {/* ★ クリックでプロフィールモーダルを開く */}
               <button type="button" className="btn-change" onClick={() => setIsProfileModalOpen(true)}>
-                編集する
+                アイコン変更
               </button>
               {/* ★ クリックでログアウトモーダルを開く */}
               <button type="button" className="btn-logout" onClick={() => setIsLogoutModalOpen(true)}>
@@ -119,7 +139,13 @@ export default function MyPage() {
           ========================= */}
       <ProfileModal 
         isOpen={isProfileModalOpen} 
-        onClose={() => setIsProfileModalOpen(false)} 
+        currentIconId={profileIconId}
+        isGuest={isGuest}
+        onClose={() => setIsProfileModalOpen(false)}
+        onSaved={(iconId, imagePath) => {
+          setProfileIconId(iconId);
+          setProfileIconPath(imagePath);
+        }}
       />
 
       <ConfirmModal
@@ -138,7 +164,8 @@ export default function MyPage() {
         .profile-frame { position: relative; width: 88%; max-width: 320px; aspect-ratio: 290 / 176; margin: 0; background: url("/mycard.png") center / 100% 100% no-repeat; }
         .profile-inner { position: absolute; top: 26%; left: 6%; right: 6%; bottom: 9%; display: flex; flex-direction: column; justify-content: space-between; }
         .profile-row { display: flex; align-items: center; gap: 14px; padding: 4px 0 0 10px; }
-        .profile-icon { width: 58px; height: 58px; flex-shrink: 0; border-radius: 50%; background: #d9d9d9; }
+        .profile-icon { width: 58px; height: 58px; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: #d9d9d9; }
+        .profile-icon img { width: 100%; height: 100%; object-fit: cover; }
         .profile-name-area { flex: 1; display: flex; flex-direction: column; align-items: flex-end; padding-right: 8px; }
         .profile-name { align-self: flex-start; margin-left: 16px; font-size: 16px; font-weight: 700; color: #111; }
         .profile-age { margin-top: 4px; font-size: 14px; color: #111; }
