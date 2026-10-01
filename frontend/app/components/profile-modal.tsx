@@ -6,20 +6,22 @@ import { supabase } from "@/lib/supabase/client";
 import type { IconOption } from "@/lib/icons";
 
 type ProfileModalProps = {
+  currentName: string;
   isOpen: boolean;
   currentIconId: number | null;
   isGuest: boolean;
   onClose: () => void;
-  onSaved: (iconId: number, imagePath: string) => void;
+  onSaved: (name: string, iconId: number, imagePath: string) => void;
 };
 
-export default function ProfileModal({ isOpen, currentIconId, isGuest, onClose, onSaved }: ProfileModalProps) {
+export default function ProfileModal({ isOpen, currentName, currentIconId, isGuest, onClose, onSaved }: ProfileModalProps) {
   if (!isOpen) return null;
-  return <ProfileModalContent currentIconId={currentIconId} isGuest={isGuest} onClose={onClose} onSaved={onSaved} />;
+  return <ProfileModalContent currentName={currentName} currentIconId={currentIconId} isGuest={isGuest} onClose={onClose} onSaved={onSaved} />;
 }
 
-function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<ProfileModalProps, "isOpen">) {
+function ProfileModalContent({ currentName, currentIconId, isGuest, onClose, onSaved }: Omit<ProfileModalProps, "isOpen">) {
   const [icons, setIcons] = useState<IconOption[]>([]);
+  const [name, setName] = useState(currentName);
   const [selectedId, setSelectedId] = useState<number | null>(currentIconId);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -45,9 +47,9 @@ function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<
     return () => controller.abort();
   }, []);
 
-  async function saveIcon() {
-    if (selectedId === null) {
-      setErrorMessage("アイコンを選んでください。");
+  async function saveProfile() {
+    if (!name.trim() || name.trim().length > 50 || selectedId === null) {
+      setErrorMessage("ユーザー名（50文字以内）とアイコンを入力してください。");
       return;
     }
     setErrorMessage("");
@@ -60,20 +62,20 @@ function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<
         if (!data.session) throw new Error("Googleログインを確認できませんでした。");
         accessToken = data.session.access_token;
       }
-      const response = await fetch("/api/profile/icon", {
+      const response = await fetch("/api/profile", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
           ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
         },
-        body: JSON.stringify({ iconId: selectedId }),
+        body: JSON.stringify({ name: name.trim(), iconId: selectedId }),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error ?? "アイコンを保存できませんでした。");
-      onSaved(result.iconId as number, result.imagePath as string);
+      if (!response.ok) throw new Error(result.error ?? "プロフィールを保存できませんでした。");
+      onSaved(result.name as string, result.iconId as number, result.imagePath as string);
       onClose();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "アイコンを保存できませんでした。");
+      setErrorMessage(error instanceof Error ? error.message : "プロフィールを保存できませんでした。");
     } finally {
       setIsSaving(false);
     }
@@ -81,13 +83,17 @@ function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" role="dialog" aria-modal="true" aria-label="アイコンを変更" onClick={(event) => event.stopPropagation()}>
-        <h2>アイコンを変更</h2>
+      <div className="modal-content" role="dialog" aria-modal="true" aria-label="プロフィールを変更" onClick={(event) => event.stopPropagation()}>
+        <h2>プロフィールを変更</h2>
+        <label className="name-field">
+          <span>ユーザー名</span>
+          <input value={name} onChange={(event) => setName(event.target.value)} maxLength={50} required />
+        </label>
         {isLoading ? <p>アイコンを読み込み中…</p> : <IconPicker icons={icons} selectedId={selectedId} onSelect={setSelectedId} name="profile-icon" />}
         {errorMessage && <p className="error-message" role="alert">{errorMessage}</p>}
         <div className="actions">
           <button type="button" onClick={onClose}>キャンセル</button>
-          <button type="button" className="save-button" onClick={() => void saveIcon()} disabled={isLoading || isSaving || selectedId === null}>
+          <button type="button" className="save-button" onClick={() => void saveProfile()} disabled={isLoading || isSaving || selectedId === null || !name.trim()}>
             {isSaving ? "保存中…" : "保存"}
           </button>
         </div>
@@ -96,6 +102,8 @@ function ProfileModalContent({ currentIconId, isGuest, onClose, onSaved }: Omit<
         .modal-overlay { position: fixed; inset: 70px 0; z-index: 2000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(255,255,255,.85); }
         .modal-content { width: min(100%, 360px); max-height: 100%; overflow-y: auto; padding: 24px 20px; border: 2px solid #299d48; border-radius: 20px; background: #fff; box-shadow: 0 4px 10px rgba(0,0,0,.1); }
         h2 { margin: 0 0 18px; text-align: center; font-size: 18px; color: #333; }
+        .name-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; color: #333; font-size: 14px; font-weight: 700; }
+        .name-field input { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid #bbb; border-radius: 8px; color: #222; font: inherit; font-weight: 400; }
         p { margin: 8px 0; font-size: 14px; color: #333; }
         .error-message { color: #a31313; }
         .actions { display: flex; justify-content: center; gap: 10px; margin-top: 20px; }
