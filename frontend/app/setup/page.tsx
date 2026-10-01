@@ -3,7 +3,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Header from "../components/header";
+import IconPicker from "../components/icon-picker";
 import { supabase } from "@/lib/supabase/client";
+import { iconImageUrl, type IconOption } from "@/lib/icons";
 
 type StyleProfile = { id: number; name: string };
 
@@ -12,9 +14,13 @@ export default function Setup() {
   const [name, setName] = useState("");
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [styleId, setStyleId] = useState("");
+  const [icons, setIcons] = useState<IconOption[]>([]);
+  const [iconId, setIconId] = useState<number | null>(null);
   const [isLoadingStyles, setIsLoadingStyles] = useState(true);
+  const [isLoadingIcons, setIsLoadingIcons] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [iconError, setIconError] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -37,6 +43,19 @@ export default function Setup() {
     }
 
     loadStyles();
+    async function loadIcons() {
+      try {
+        const response = await fetch("/api/icons", { signal: controller.signal, cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || !Array.isArray(result.icons)) throw new Error("アイコン一覧を取得できませんでした。");
+        if (!controller.signal.aborted) setIcons(result.icons as IconOption[]);
+      } catch {
+        if (!controller.signal.aborted) setIconError("アイコンを読み込めませんでした。後からプロフィールで設定できます。");
+      } finally {
+        if (!controller.signal.aborted) setIsLoadingIcons(false);
+      }
+    }
+    loadIcons();
     return () => controller.abort();
   }, []);
 
@@ -44,6 +63,10 @@ export default function Setup() {
     event.preventDefault();
     if (!name.trim() || !styleId) {
       setErrorMessage("名前とスタイルを入力してね！");
+      return;
+    }
+    if (icons.length > 0 && iconId === null) {
+      setErrorMessage("アイコンを選んでね！");
       return;
     }
     setErrorMessage("");
@@ -64,7 +87,7 @@ export default function Setup() {
       const response = await fetch("/api/setup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, name, styleId: Number(styleId), accessToken }),
+        body: JSON.stringify({ mode, name, styleId: Number(styleId), iconId, accessToken }),
       });
       const result = await response.json();
       if (!response.ok) {
@@ -77,6 +100,9 @@ export default function Setup() {
       setIsSubmitting(false);
     }
   }
+
+  const selectedIcon = icons.find((icon) => icon.id === iconId);
+  const selectedIconUrl = iconImageUrl(selectedIcon?.image_path);
 
   return (
     <div className="setup-page">
@@ -112,7 +138,7 @@ export default function Setup() {
             説明テキスト
             ========================= */}
         <p className="description-text">
-          名前と投稿スタイルを選んでね。<br />
+          名前・投稿スタイル・アイコンを選んでね。<br />
           文章の雰囲気は後から変更できるよ！
         </p>
 
@@ -121,7 +147,9 @@ export default function Setup() {
             ========================= */}
         <div className="profile-setup-area">
           {/* 左側の丸いアイコン枠 */}
-          <div className="profile-icon-placeholder"></div>
+          <div className="profile-icon-placeholder">
+            {selectedIconUrl && <img src={selectedIconUrl} alt={selectedIcon?.name ?? "選んだアイコン"} />}
+          </div>
           
           {/* 右側の入力欄 */}
           <div className="profile-inputs">
@@ -136,10 +164,15 @@ export default function Setup() {
           </div>
         </div>
 
+        <div className="icon-picker-area">
+          {isLoadingIcons ? <p>アイコンを読み込み中…</p> : <IconPicker icons={icons} selectedId={iconId} onSelect={setIconId} name="setup-icon" />}
+          {iconError && <p role="status" className="setup-error">{iconError}</p>}
+        </div>
+
         {/* =========================
             始めるボタン
             ========================= */}
-        <button className="start-button" type="submit" disabled={isLoadingStyles || isSubmitting || styles.length === 0}>
+        <button className="start-button" type="submit" disabled={isLoadingStyles || isLoadingIcons || isSubmitting || styles.length === 0}>
           {isSubmitting ? "保存中…" : "始める！"}
         </button>
         {errorMessage && <p role="alert" className="setup-error">{errorMessage}</p>}
@@ -275,7 +308,11 @@ export default function Setup() {
           background-color: #d9d9d9;
           border-radius: 50%;
           flex-shrink: 0;
+          overflow: hidden;
         }
+
+        .profile-icon-placeholder img { width: 100%; height: 100%; object-fit: cover; }
+        .icon-picker-area { width: 100%; margin-bottom: 24px; }
 
         .profile-inputs {
           display: flex;
