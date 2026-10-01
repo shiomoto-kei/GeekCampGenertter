@@ -31,6 +31,7 @@ type Post = {
 
 type ReactionCode = "like" | "laugh" | "sad";
 type CurrentUser = { id: number; name: string; default_style_id: number };
+const POSTS_PER_PAGE = 20;
 
 export default function Home() {
   // 「new」か「recommend」かを管理する
@@ -41,6 +42,11 @@ export default function Home() {
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const [retryLoadMore, setRetryLoadMore] = useState(0);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [isLoading, setIsLoading] = useState(true);
@@ -84,10 +90,22 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
+    const loadingMore = pageIndex > 0 && !searchTerm;
 
     async function loadPosts() {
-      setIsLoading(true);
-      setLoadError(null);
+      setReactionError(null);
+      if (loadingMore) {
+        setIsLoadingMore(true);
+        setLoadMoreError(null);
+      } else {
+        setIsLoading(true);
+        setIsLoadingMore(false);
+        setLoadError(null);
+        setLoadMoreError(null);
+        setHasMorePosts(false);
+        setPosts([]);
+        setMyReactions({});
+      }
 
       let matchingAuthorIds: number[] | null = null;
       let matchingPostIds: number[] | null = null;
@@ -183,11 +201,16 @@ export default function Home() {
       if (activeTab === "recommend") {
         query = query
           .order("reaction_total", { ascending: false })
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
       } else {
-        query = query.order("created_at", { ascending: false });
+        query = query
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false });
       }
-      query = query.limit(50);
+      query = searchTerm
+        ? query.limit(50)
+        : query.range(pageIndex * POSTS_PER_PAGE, (pageIndex + 1) * POSTS_PER_PAGE);
 
       if (matchingPostIds !== null) {
         query = query.in("id", matchingPostIds);
@@ -204,12 +227,13 @@ export default function Home() {
 
       if (cancelled) return;
       if (error) {
-        setLoadError(`投稿を読み込めませんでした: ${error.message}`);
-        setPosts([]);
-        setMyReactions({});
+        const message = `投稿を読み込めませんでした: ${error.message}`;
+        if (loadingMore) setLoadMoreError(message);
+        else setLoadError(message);
       } else {
         const bucket = "post-images";
-        const loadedPosts = (data ?? []) as Omit<Post, "images" | "tags" | "author">[];
+        const hasNextPage = !searchTerm && (data?.length ?? 0) > POSTS_PER_PAGE;
+        const loadedPosts = (searchTerm ? data ?? [] : (data ?? []).slice(0, POSTS_PER_PAGE)) as Omit<Post, "images" | "tags" | "author">[];
         const authorIds = [...new Set(loadedPosts.map((post) => post.author_id))];
         const authorResponse = authorIds.length > 0
           ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
@@ -217,10 +241,14 @@ export default function Home() {
         if (authorResponse && !authorResponse.ok) {
           const result = await authorResponse.json();
           if (!cancelled) {
-            setLoadError(result.error ?? "投稿者の名前を読み込めませんでした。");
-            setPosts([]);
-            setMyReactions({});
-            setIsLoading(false);
+            const message = result.error ?? "投稿者の名前を読み込めませんでした。";
+            if (loadingMore) {
+              setLoadMoreError(message);
+              setIsLoadingMore(false);
+            } else {
+              setLoadError(message);
+              setIsLoading(false);
+            }
           }
           return;
         }
@@ -241,54 +269,76 @@ export default function Home() {
             return item?.tag_name ? [item.tag_name] : [];
           }),
         }));
-        setPosts(mappedPosts);
+        if (cancelled) return;
+        setHasMorePosts(hasNextPage);
+        setPosts((current) => loadingMore
+          ? [...current, ...mappedPosts.filter((post) => !current.some((existing) => existing.id === post.id))]
+          : mappedPosts);
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        if (mappedPosts.length > 0) {
-          const reactionResponse = await fetch(
-            `/api/reactions?postIds=${mappedPosts.map((post) => post.id).join(",")}`,
-            {
-              headers: sessionData.session
-                ? { Authorization: `Bearer ${sessionData.session.access_token}` }
-                : {},
-              cache: "no-store",
-            },
-          );
-          const reactionResult = await reactionResponse.json();
-          if (cancelled) return;
-          if (!reactionResponse.ok) {
-            setReactionError(reactionResult.error ?? "リアクションを取得できませんでした。");
-            setMyReactions({});
-          } else {
-            const selected: Record<number, ReactionCode> = {};
-            for (const reaction of (reactionResult.reactions ?? []) as { post_id: number; reaction_code: string }[]) {
-              if (["like", "laugh", "sad"].includes(reaction.reaction_code)) {
-                selected[reaction.post_id] = reaction.reaction_code as ReactionCode;
+        try {
+          const { data: sessionData } = await supabase.auth.getSession();
+          if (mappedPosts.length > 0) {
+            const reactionResponse = await fetch(
+              `/api/reactions?postIds=${mappedPosts.map((post) => post.id).join(",")}`,
+              {
+                headers: sessionData.session
+                  ? { Authorization: `Bearer ${sessionData.session.access_token}` }
+                  : {},
+                cache: "no-store",
+              },
+            );
+            const reactionResult = await reactionResponse.json();
+            if (cancelled) return;
+            if (!reactionResponse.ok) {
+              setReactionError(reactionResult.error ?? "リアクションを取得できませんでした。");
+            } else {
+              const selected: Record<number, ReactionCode> = {};
+              for (const reaction of (reactionResult.reactions ?? []) as { post_id: number; reaction_code: string }[]) {
+                if (["like", "laugh", "sad"].includes(reaction.reaction_code)) {
+                  selected[reaction.post_id] = reaction.reaction_code as ReactionCode;
+                }
               }
+              setMyReactions((current) => loadingMore ? { ...current, ...selected } : selected);
             }
-            setMyReactions(selected);
           }
-        } else {
-          setMyReactions({});
+        } catch (reactionLoadError) {
+          if (!cancelled) {
+            setReactionError(reactionLoadError instanceof Error ? reactionLoadError.message : "リアクションを取得できませんでした。");
+          }
         }
       }
-      setIsLoading(false);
+      if (!cancelled) {
+        if (loadingMore) setIsLoadingMore(false);
+        else setIsLoading(false);
+      }
     }
 
-    void loadPosts();
+    void loadPosts().catch((error: unknown) => {
+      if (cancelled) return;
+      const message = error instanceof Error ? error.message : "投稿を読み込めませんでした。";
+      if (loadingMore) {
+        setLoadMoreError(message);
+        setIsLoadingMore(false);
+      } else {
+        setLoadError(message);
+        setIsLoading(false);
+      }
+    });
     return () => {
       cancelled = true;
     };
-  }, [activeTab, searchTerm, refreshVersion]);
+  }, [activeTab, searchTerm, refreshVersion, pageIndex, retryLoadMore]);
 
   function submitSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setPageIndex(0);
     setSearchTerm(searchInput.trim());
   }
 
   function searchHashtag(tag: string) {
     const query = `#${tag.replace(/^#+/, "")}`;
     setSearchInput(query);
+    setPageIndex(0);
     setSearchTerm(query);
   }
 
@@ -390,6 +440,7 @@ export default function Home() {
               }`}
               onClick={() => {
                 setActiveTab("new");
+                setPageIndex(0);
                 setRefreshVersion((current) => current + 1);
               }}
             >
@@ -402,6 +453,7 @@ export default function Home() {
               }`}
               onClick={() => {
                 setActiveTab("recommend");
+                setPageIndex(0);
                 setRefreshVersion((current) => current + 1);
               }}
             >
@@ -472,6 +524,24 @@ export default function Home() {
               </div>
             );
           })}
+          {!isLoading && !loadError && !searchTerm && hasMorePosts && (
+            <div className="load-more-area">
+              {loadMoreError && <p className="list-message error-message" role="alert">{loadMoreError}</p>}
+              <button
+                className="load-more-button"
+                type="button"
+                disabled={isLoadingMore}
+                onClick={() => {
+                  if (isLoadingMore) return;
+                  setIsLoadingMore(true);
+                  if (loadMoreError) setRetryLoadMore((current) => current + 1);
+                  else setPageIndex((current) => current + 1);
+                }}
+              >
+                {isLoadingMore ? "読み込み中..." : loadMoreError ? "もう一度読み込む" : "もっと見る"}
+              </button>
+            </div>
+          )}
         </div>
       </main>
 
@@ -499,6 +569,7 @@ export default function Home() {
           setReplyingToPostId(null);
           setExpandedReplies({});
           setRepliesByPost({});
+          setPageIndex(0);
           setRefreshVersion((current) => current + 1);
         }}
       />
@@ -671,6 +742,10 @@ export default function Home() {
         .error-message {
           color: #b42318;
         }
+        .load-more-area { display: flex; flex-direction: column; align-items: center; gap: 8px; padding-bottom: 12px; }
+        .load-more-area .list-message { margin: 0; padding: 0 12px; }
+        .load-more-button { min-width: 140px; min-height: 38px; padding: 8px 20px; border: 1px solid #299d48; border-radius: 20px; background: #fff; color: #166534; font-size: 13px; font-weight: 600; cursor: pointer; }
+        .load-more-button:disabled { opacity: 0.6; cursor: wait; }
         .reply-list { margin: -12px 0 0; padding: 10px 12px 12px; border: 1px solid #ddd; border-radius: 0 0 12px 12px; }
         .reply-card { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 12px; color: #333; }
         .reply-author { display: flex; align-items: center; gap: 6px; }
