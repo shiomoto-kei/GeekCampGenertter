@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { ALLOWED_POST_IMAGE_TYPES, MAX_POST_IMAGE_COUNT, preparePostImage, validatePostImage } from "@/lib/post-images";
+import { postDraftKey, readDraftImages, readDraftText, saveDraftImages, saveDraftText } from "@/lib/post-drafts";
+import ConfirmModal from "../components/confirm-modal";
 
 type StyleProfile = { id: number; name: string };
 
@@ -34,11 +36,11 @@ function getErrorMessage(error: unknown) {
 }
 
 export default function NewPost({ isOpen, ...props }: NewPostProps) {
-  if (!isOpen) return null;
-  return <NewPostContent {...props} />;
+  return <NewPostContent isOpen={isOpen} {...props} />;
 }
 
-function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUser = null, onClose, onCreated }: Omit<NewPostProps, "isOpen">) {
+function NewPostContent({ isOpen, parentPostId = null, defaultStyleId = null, currentUser = null, onClose, onCreated }: NewPostProps) {
+  const draftKey = currentUser ? postDraftKey(currentUser.id, parentPostId) : null;
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [styleId, setStyleId] = useState("");
   const [originalText, setOriginalText] = useState("");
@@ -51,6 +53,99 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStage, setSubmitStage] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [readyDraftKey, setReadyDraftKey] = useState<string | null>(null);
+  const [draftWarning, setDraftWarning] = useState("");
+  const [showDiscardConfirmation, setShowDiscardConfirmation] = useState(false);
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  const imageSaveQueue = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    if (!draftKey) return;
+    let cancelled = false;
+    void (async () => {
+      let saved = null;
+      let warning = "";
+      try {
+        saved = readDraftText(draftKey);
+      } catch {
+        warning = "文章の下書きを復元できませんでした。このブラウザの保存設定を確認してください。";
+      }
+
+      let savedImages: File[] = [];
+      try {
+        savedImages = await readDraftImages(draftKey);
+      } catch {
+        warning ||= "画像の下書きを復元できませんでした。再読み込み後は画像を選び直してください。";
+      }
+
+      if (cancelled) return;
+      setStyleId(saved?.styleId ?? (defaultStyleId ? String(defaultStyleId) : ""));
+      setOriginalText(saved?.originalText ?? "");
+      setConvertedText(saved?.convertedText ?? "");
+      setHashtags(saved?.hashtags ?? "");
+      setImages(savedImages.filter((file) => validatePostImage(file) === null).slice(0, MAX_POST_IMAGE_COUNT));
+      setDraftWarning(warning);
+      setErrorMessage(null);
+      setReadyDraftKey(draftKey);
+    })();
+
+    return () => { cancelled = true; };
+  }, [draftKey, defaultStyleId]);
+
+  useEffect(() => {
+    if (!draftKey || readyDraftKey !== draftKey) return;
+    try {
+      saveDraftText(draftKey, { styleId, originalText, convertedText, hashtags }, images.length > 0);
+    } catch {
+      queueMicrotask(() => setDraftWarning("文章の下書きを保存できませんでした。このブラウザの保存設定を確認してください。"));
+    }
+  }, [draftKey, readyDraftKey, styleId, originalText, convertedText, hashtags, images.length]);
+
+  useEffect(() => {
+    if (!draftKey || readyDraftKey !== draftKey) return;
+    const pending = imageSaveQueue.current.catch(() => undefined).then(() => saveDraftImages(draftKey, images));
+    imageSaveQueue.current = pending;
+    void pending.catch(() => setDraftWarning("画像の下書きを保存できませんでした。再読み込み後は画像を選び直してください。"));
+  }, [draftKey, readyDraftKey, images]);
+
+  async function clearDraft() {
+    if (!draftKey) return;
+    setReadyDraftKey(null);
+    let clearError: unknown = null;
+    try {
+      window.localStorage.removeItem(draftKey);
+    } catch (error) {
+      clearError = error;
+    }
+    try {
+      await imageSaveQueue.current.catch(() => undefined);
+      await saveDraftImages(draftKey, []);
+    } catch (error) {
+      clearError ??= error;
+    }
+    setOriginalText("");
+    setConvertedText("");
+    setHashtags("");
+    setImages([]);
+    setStyleId(defaultStyleId ? String(defaultStyleId) : String(styles[0]?.id ?? ""));
+    setDraftWarning("");
+    setReadyDraftKey(draftKey);
+    if (clearError) throw clearError;
+  }
+
+  async function discardDraft() {
+    setShowDiscardConfirmation(false);
+    setIsDiscarding(true);
+    try {
+      await clearDraft();
+      setErrorMessage(null);
+    } catch {
+      setDraftWarning("下書きを削除できませんでした。ブラウザの保存設定を確認してください。");
+      setReadyDraftKey(draftKey);
+    } finally {
+      setIsDiscarding(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -185,6 +280,13 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "投稿を保存できませんでした。");
 
+      if (draftKey) {
+        try {
+          await clearDraft();
+        } catch {
+          // 投稿自体は成功済みなので、下書き削除の失敗で再投稿させない。
+        }
+      }
       onCreated();
     } catch (error) {
       if (uploadedPaths.length > 0) await supabase.storage.from(bucket).remove(uploadedPaths);
@@ -200,15 +302,29 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
     }
   }
 
+  if (!isOpen) return null;
+
+  if (!draftKey || readyDraftKey !== draftKey) {
+    return <div role="status" style={{ position: "fixed", inset: "80px 0 70px", zIndex: 2000, display: "grid", placeItems: "center", background: "rgba(255, 255, 255, 0.9)", color: "#333" }}>下書きを読み込み中…</div>;
+  }
+
+  const hasDraft = Boolean(originalText || convertedText || hashtags || images.length);
+
   return (
     <>
-      <div className="modal-overlay" onClick={() => { if (!isSubmitting) onClose(); }}>
+      <div className="modal-overlay" onClick={() => { if (!isSubmitting && !isConverting && !isDiscarding) onClose(); }}>
         <form className="modal-content" aria-busy={isSubmitting} onClick={(event) => event.stopPropagation()} onSubmit={submitPost}>
           <div className="modal-title-wrapper">
             <span className="modal-title-dots-right" />
-          <h2 className="modal-title">{parentPostId ? "返信を投稿" : "新規投稿"}</h2>
+            <h2 className="modal-title">{parentPostId ? "返信を投稿" : "新規投稿"}</h2>
+            <button className="close-button" type="button" onClick={onClose} disabled={isSubmitting || isConverting || isDiscarding} aria-label="下書きを保存して閉じる">×</button>
           </div>
           {currentUser && <p className="posting-user">投稿者：{currentUser.name} <span>@{currentUser.id}</span></p>}
+          <div className="draft-controls">
+            <span>入力内容はこのブラウザに自動保存されます</span>
+            {hasDraft && <button type="button" disabled={isSubmitting || isConverting || isDiscarding} onClick={() => setShowDiscardConfirmation(true)}>下書きを破棄</button>}
+          </div>
+          {draftWarning && <p className="draft-warning" role="status">{draftWarning}</p>}
 
           <label className="field-label" htmlFor="post-style">変換スタイル</label>
           <select
@@ -327,6 +443,15 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
         </form>
       </div>
 
+      <ConfirmModal
+        isOpen={showDiscardConfirmation}
+        onClose={() => setShowDiscardConfirmation(false)}
+        title="下書きの破棄"
+        message="入力した文章と選択した画像を削除しますか？"
+        confirmText="破棄する"
+        onConfirm={() => { void discardDraft(); }}
+      />
+
       <style jsx>{`
         .modal-overlay {
           position: fixed;
@@ -344,6 +469,7 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
           width: 80%;
           max-width: 360px;
           background-color: #ffffff;
+          color: #333;
           border: 2px solid #299d48;
           border-radius: 20px;
           padding: 20px;
@@ -362,8 +488,14 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
           width: 80%;
         }
         .modal-title { font-size: 18px; font-weight: bold; color: #333; margin: 0; }
+        .close-button { position: absolute; top: 4px; right: 5px; width: 30px; height: 30px; border: 0; background: transparent; color: #555; font-size: 24px; line-height: 1; cursor: pointer; }
+        .close-button:disabled { opacity: .5; cursor: wait; }
         .posting-user { margin: -10px 0 8px; color: #666; font-size: 12px; text-align: right; }
         .posting-user span { color: #999; }
+        .draft-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: #607467; font-size: 10px; }
+        .draft-controls button { flex-shrink: 0; border: 0; background: transparent; color: #a13d36; font-size: 11px; cursor: pointer; }
+        .draft-controls button:disabled { opacity: .5; cursor: wait; }
+        .draft-warning { margin: 0; color: #a13d36; font-size: 11px; }
         .modal-title-wrapper::before, .modal-title-wrapper::after,
         .modal-title-dots-right::before, .modal-title-dots-right::after {
           content: "";
@@ -386,6 +518,7 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
           padding: 6px 10px;
           box-sizing: border-box;
           background: #fff;
+          color: #333;
           font-size: 13px;
         }
         .hashtag-input-wrap { display: flex; align-items: center; min-height: 36px; padding-left: 10px; border: 1px solid #ccc; border-radius: 8px; background: #fff; color: #299d48; font-weight: 700; }
@@ -405,6 +538,8 @@ function NewPostContent({ parentPostId = null, defaultStyleId = null, currentUse
           border-radius: 12px;
           padding: 10px;
           box-sizing: border-box;
+          background: #fff;
+          color: #333;
           resize: vertical;
           font: inherit;
           font-size: 14px;
