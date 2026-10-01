@@ -12,6 +12,9 @@ type NoticeData = {
   actorName: string;
   actorIconPath: string | null;
   type: "reply" | "reaction";
+  postId: number | null;
+  postPreview: string | null;
+  postImageUrl: string | null;
   isRead: boolean;
   createdAt: string;
 };
@@ -97,6 +100,9 @@ export default function Notice() {
               key={item.id}
               message={`${item.actorName}さんがあなたの投稿に${item.type === "reply" ? "返信しました" : "リアクションしました"}。`}
               iconUrl={iconImageUrl(item.actorIconPath)}
+              postUrl={item.postId ? `/posts/${item.postId}` : null}
+              postPreview={item.postPreview}
+              postImageUrl={item.postImageUrl}
               isRead={item.isRead}
               date={new Date(item.createdAt).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" })}
             />

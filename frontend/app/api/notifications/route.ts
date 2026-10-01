@@ -45,6 +45,31 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
   }
 
+  const notifiedPostIds = [...new Set((data ?? []).flatMap((item) => item.post_id == null ? [] : [item.post_id]))];
+  const postsById = new Map<number, { id: number; parent_post_id: number | null; converted_text: string; images_paths: { path: string }[] | null }>();
+  if (notifiedPostIds.length) {
+    const { data: notifiedPosts, error: postError } = await recipient.admin
+      .from("posts")
+      .select("id,parent_post_id,converted_text,images_paths(path)")
+      .in("id", notifiedPostIds);
+    if (postError) return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
+    for (const post of notifiedPosts ?? []) postsById.set(post.id, post);
+
+    const parentIds = [...new Set((data ?? []).flatMap((item) => {
+      if (item.notification_type !== "reply" || item.post_id == null) return [];
+      const parentId = postsById.get(item.post_id)?.parent_post_id;
+      return parentId == null ? [] : [parentId];
+    }))];
+    if (parentIds.length) {
+      const { data: parentPosts, error: parentError } = await recipient.admin
+        .from("posts")
+        .select("id,parent_post_id,converted_text,images_paths(path)")
+        .in("id", parentIds);
+      if (parentError) return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
+      for (const post of parentPosts ?? []) postsById.set(post.id, post);
+    }
+  }
+
   const actorIds = [...new Set((data ?? []).flatMap((item) => item.actor_id == null ? [] : [item.actor_id]))];
   const actorProfiles = new Map<number, { name: string; iconPath: string | null }>();
   if (actorIds.length) {
@@ -69,15 +94,26 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     unreadCount: count ?? 0,
-    notifications: (data ?? []).map((item) => ({
-      id: item.id,
-      actorName: item.actor_id == null ? "ユーザー" : actorProfiles.get(item.actor_id)?.name ?? "ユーザー",
-      actorIconPath: item.actor_id == null ? null : actorProfiles.get(item.actor_id)?.iconPath ?? null,
-      type: item.notification_type,
-      postId: item.post_id,
-      isRead: item.is_read,
-      createdAt: item.created_at,
-    })),
+    notifications: (data ?? []).map((item) => {
+      const notifiedPost = item.post_id == null ? null : postsById.get(item.post_id);
+      const previewPost = item.notification_type === "reply"
+        ? notifiedPost?.parent_post_id == null ? null : postsById.get(notifiedPost.parent_post_id)
+        : notifiedPost;
+      const imagePath = previewPost?.images_paths?.[0]?.path;
+      return {
+        id: item.id,
+        actorName: item.actor_id == null ? "ユーザー" : actorProfiles.get(item.actor_id)?.name ?? "ユーザー",
+        actorIconPath: item.actor_id == null ? null : actorProfiles.get(item.actor_id)?.iconPath ?? null,
+        type: item.notification_type,
+        postId: notifiedPost?.id ?? null,
+        postPreview: previewPost ? Array.from(previewPost.converted_text).slice(0, 160).join("") : null,
+        postImageUrl: imagePath
+          ? /^https?:\/\//i.test(imagePath) ? imagePath : recipient.admin.storage.from("post-images").getPublicUrl(imagePath).data.publicUrl
+          : null,
+        isRead: item.is_read,
+        createdAt: item.created_at,
+      };
+    }),
   }, { headers: noStore });
 }
 
