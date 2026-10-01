@@ -9,6 +9,8 @@ type StyleProfile = { id: number; name: string };
 type NewPostProps = {
   isOpen: boolean;
   parentPostId?: number | null;
+  defaultStyleId?: number | null;
+  currentUser?: { id: number; name: string } | null;
   onClose: () => void;
   onCreated: () => void;
 };
@@ -34,7 +36,7 @@ function getErrorMessage(error: unknown) {
   return "投稿を保存できませんでした。";
 }
 
-export default function NewPost({ isOpen, parentPostId = null, onClose, onCreated }: NewPostProps) {
+export default function NewPost({ isOpen, parentPostId = null, defaultStyleId = null, currentUser = null, onClose, onCreated }: NewPostProps) {
   const [styles, setStyles] = useState<StyleProfile[]>([]);
   const [styleId, setStyleId] = useState("");
   const [originalText, setOriginalText] = useState("");
@@ -72,7 +74,10 @@ export default function NewPost({ isOpen, parentPostId = null, onClose, onCreate
       } else {
         const profiles = (data ?? []) as StyleProfile[];
         setStyles(profiles);
-        setStyleId((current) => current || String(profiles[0]?.id ?? ""));
+        const profileDefault = profiles.some((profile) => profile.id === defaultStyleId)
+          ? String(defaultStyleId)
+          : String(profiles[0]?.id ?? "");
+        setStyleId((current) => current || profileDefault);
       }
       setIsLoadingStyles(false);
     }
@@ -81,7 +86,7 @@ export default function NewPost({ isOpen, parentPostId = null, onClose, onCreate
     return () => {
       cancelled = true;
     };
-  }, [isOpen]);
+  }, [defaultStyleId, isOpen]);
 
   if (!isOpen) return null;
 
@@ -163,15 +168,23 @@ export default function NewPost({ isOpen, parentPostId = null, onClose, onCreate
         .map((tag) => tag.replace(/^#+/, "").trim())
         .filter(Boolean);
 
-      const { error } = await supabase.rpc("create_post_with_hashtags", {
-        p_style_type_id: Number(styleId),
-        p_original_text: originalText.trim(),
-        p_converted_text: convertedText.trim(),
-        p_hashtags: tags,
-        p_image_paths: uploadedPaths,
-        p_parent_post_id: parentPostId,
+      const response = await fetch("/api/posts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          styleId: Number(styleId),
+          originalText: originalText.trim(),
+          convertedText: convertedText.trim(),
+          hashtags: tags,
+          imagePaths: uploadedPaths,
+          parentPostId,
+        }),
       });
-      if (error) throw error;
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "投稿を保存できませんでした。");
 
       onCreated();
     } catch (error) {
@@ -195,6 +208,7 @@ export default function NewPost({ isOpen, parentPostId = null, onClose, onCreate
             <span className="modal-title-dots-right" />
           <h2 className="modal-title">{parentPostId ? "返信を投稿" : "新規投稿"}</h2>
           </div>
+          {currentUser && <p className="posting-user">投稿者：{currentUser.name} <span>@{currentUser.id}</span></p>}
 
           <label className="field-label" htmlFor="post-style">変換スタイル</label>
           <select
@@ -346,6 +360,8 @@ export default function NewPost({ isOpen, parentPostId = null, onClose, onCreate
           width: 80%;
         }
         .modal-title { font-size: 18px; font-weight: bold; color: #333; margin: 0; }
+        .posting-user { margin: -10px 0 8px; color: #666; font-size: 12px; text-align: right; }
+        .posting-user span { color: #999; }
         .modal-title-wrapper::before, .modal-title-wrapper::after,
         .modal-title-dots-right::before, .modal-title-dots-right::after {
           content: "";

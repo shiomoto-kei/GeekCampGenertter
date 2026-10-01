@@ -7,6 +7,7 @@ type ReactionCode = "like" | "laugh" | "sad";
 
 type PostCardProps = {
   userName: string;
+  userId?: number;
   text: string;
   showDelete?: boolean;
   originalText?: string;
@@ -24,6 +25,7 @@ type PostCardProps = {
 
 export default function PostCard({
   userName,
+  userId,
   text,
   showDelete = false,
   originalText,
@@ -74,7 +76,10 @@ export default function PostCard({
       <div className="post-header">
         <div className="user-info">
           <div className="user-icon" />
-          <span className="user-name">{userName}</span>
+          <div className="user-identity">
+            <span className="user-name">{userName}</span>
+            {userId !== undefined && <span className="user-id">@{userId}</span>}
+          </div>
         </div>
 
         {showDelete && (
@@ -271,6 +276,11 @@ export default function PostCard({
           align-items: center;
           gap: 8px;
         }
+        .user-identity {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
         .user-icon {
           width: 22px;
           height: 22px;
@@ -281,6 +291,10 @@ export default function PostCard({
         .user-name {
           font-size: 13px;
           color: #333;
+        }
+        .user-id {
+          color: #888;
+          font-size: 10px;
         }
         .delete-button {
           display: flex;

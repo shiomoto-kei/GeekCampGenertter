@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase/client";
 
 type Post = {
   id: number;
+  author_id: number;
   converted_text: string;
   original_text: string;
   like_count: number;
@@ -17,7 +18,7 @@ type Post = {
   sad_count: number;
   reply_count: number;
   created_at: string;
-  author: { name: string } | { name: string }[] | null;
+  author: { id: number; name: string } | { id: number; name: string }[] | null;
   images_paths: { path: string }[] | null;
   images: string[];
   post_hashtags: { hashtag: { tag_name: string } | { tag_name: string }[] | null }[] | null;
@@ -25,6 +26,7 @@ type Post = {
 };
 
 type ReactionCode = "like" | "laugh" | "sad";
+type CurrentUser = { id: number; name: string; default_style_id: number };
 
 export default function Home() {
   // 「new」か「recommend」かを管理する
@@ -33,6 +35,7 @@ export default function Home() {
   // モーダルの開閉状態を管理する
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -49,13 +52,42 @@ export default function Home() {
   useEffect(() => {
     let cancelled = false;
 
+    async function loadCurrentUser() {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        const session = data.session;
+        let response = session
+          ? await fetch("/api/session?mode=google", {
+              headers: { Authorization: `Bearer ${session.access_token}` },
+              cache: "no-store",
+            })
+          : null;
+        if (!response || response.status === 401) {
+          response = await fetch("/api/session?mode=guest", { cache: "no-store" });
+        }
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? "ログイン情報を取得できませんでした。");
+        if (!cancelled) setCurrentUser(result.exists ? result.profile as CurrentUser : null);
+      } catch {
+        if (!cancelled) setCurrentUser(null);
+      }
+    }
+
+    void loadCurrentUser();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
     async function loadPosts() {
       setIsLoading(true);
       setLoadError(null);
 
       let query = supabase
         .from("posts")
-        .select("id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, author:users!posts_author_id_fkey(name), images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
+        .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
         .is("parent_post_id", null);
 
       if (activeTab === "recommend") {
@@ -83,9 +115,28 @@ export default function Home() {
         setMyReactions({});
       } else {
         const bucket = "post-images";
-        const loadedPosts = (data ?? []) as Omit<Post, "images" | "tags">[];
+        const loadedPosts = (data ?? []) as Omit<Post, "images" | "tags" | "author">[];
+        const authorIds = [...new Set(loadedPosts.map((post) => post.author_id))];
+        const authorResponse = authorIds.length > 0
+          ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
+          : null;
+        if (authorResponse && !authorResponse.ok) {
+          const result = await authorResponse.json();
+          if (!cancelled) {
+            setLoadError(result.error ?? "投稿者の名前を読み込めませんでした。");
+            setPosts([]);
+            setMyReactions({});
+            setIsLoading(false);
+          }
+          return;
+        }
+        const authorResult = authorResponse ? await authorResponse.json() : { users: [] };
+        const authorById = new Map<number, { id: number; name: string }>(
+          (authorResult.users ?? []).map((user: { id: number; name: string }) => [user.id, user]),
+        );
         const mappedPosts = loadedPosts.map((post) => ({
           ...post,
+          author: authorById.get(post.author_id) ?? null,
           images: (post.images_paths ?? []).map(({ path }) => {
             if (/^https?:\/\//i.test(path)) return path;
             if (!bucket) return "";
@@ -267,7 +318,8 @@ export default function Home() {
             return (
               <div className="post-thread" key={post.id}>
                 <PostCard
-                  userName={author?.name ?? "ユーザー"}
+                  userName={author?.name ?? (post.author_id === currentUser?.id ? currentUser.name : "ユーザー")}
+                  userId={author?.id ?? post.author_id}
                   text={post.converted_text}
                   originalText={post.original_text}
                   images={post.images}
@@ -314,6 +366,8 @@ export default function Home() {
       <NewPost
         isOpen={isModalOpen || replyingToPostId !== null}
         parentPostId={replyingToPostId}
+        defaultStyleId={currentUser?.default_style_id ?? null}
+        currentUser={currentUser}
         onClose={() => { setIsModalOpen(false); setReplyingToPostId(null); }}
         onCreated={() => {
           setIsModalOpen(false);
