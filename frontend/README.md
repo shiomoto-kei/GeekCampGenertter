@@ -16,6 +16,8 @@ Run `app/db/db_setup.sql` in that project's SQL Editor. Before using the app wit
 
 For selectable profile icons, run `app/db/db_add_table.sql` if its schema changes are not yet present, and then run `app/db/db_icon_security.sql` if that policy has not yet been applied. Add rows to `icons` with `name`, `gender`, `generation`, and `image_path`. `image_path` may be an HTTPS URL, a local `/...` public asset path, or an object path inside a public Supabase Storage bucket named `icons` (create the bucket and upload the matching objects first). Without icon rows, profile setup remains available but icon selection is deferred. Posts use the author's current `users.icon_id`; publishing a post never changes the icon.
 
+Post images are optimized in the browser before upload: static images are resized to at most 1600px and encoded as WebP only when the result is smaller. If compression is unavailable or does not reduce the size, the original image is uploaded. Animated GIFs and WebP files keep their animation and are uploaded unchanged. The existing 5 MiB per-image limit and `post-images` bucket settings stay unchanged; existing stored images are not modified.
+
 Run `app/db/db_notifications.sql` after `db_setup.sql` to make notifications private and create them automatically for replies and reactions. This notification-only SQL does not change the Home page's post permissions. The broader `db_security.sql` is still needed before real users can safely use the app.
 
 For Google sign-in, enable the Google provider in Supabase, register that project's Supabase callback URL in the Google Cloud OAuth web client, and allow the local app redirect URL in Supabase Auth URL Configuration.
