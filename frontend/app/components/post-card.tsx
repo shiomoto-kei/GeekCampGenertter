@@ -8,6 +8,7 @@ type ReactionCode = "like" | "laugh" | "sad";
 type PostCardProps = {
   userName: string;
   userId?: number;
+  iconUrl?: string | null;
   text: string;
   showDelete?: boolean;
   originalText?: string;
@@ -26,6 +27,7 @@ type PostCardProps = {
 export default function PostCard({
   userName,
   userId,
+  iconUrl = null,
   text,
   showDelete = false,
   originalText,
@@ -75,7 +77,7 @@ export default function PostCard({
     <article className="post-card">
       <div className="post-header">
         <div className="user-info">
-          <div className="user-icon" />
+          <div className="user-icon">{iconUrl && <img src={iconUrl} alt="" />}</div>
           <div className="user-identity">
             <span className="user-name">{userName}</span>
             {userId !== undefined && <span className="user-id">@{userId}</span>}
@@ -287,7 +289,9 @@ export default function PostCard({
           flex-shrink: 0;
           background: #ff8d82;
           border-radius: 50%;
+          overflow: hidden;
         }
+        .user-icon img { width: 100%; height: 100%; object-fit: cover; }
         .user-name {
           font-size: 13px;
           color: #333;

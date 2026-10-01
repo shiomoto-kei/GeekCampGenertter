@@ -14,6 +14,8 @@ SUPABASE_SECRET_KEY=<server-only-secret-key>
 
 Run `app/db/db_setup.sql` in that project's SQL Editor. Before using the app with real users, review and apply `app/db/db_security.sql`; it enables RLS and restricts browser access. Coordinate its read/write restrictions with the Home and notification implementations first.
 
+For selectable profile icons, run `app/db/db_add_table.sql` if its schema changes are not yet present, and then run `app/db/db_icon_security.sql` if that policy has not yet been applied. Add rows to `icons` with `name`, `gender`, `generation`, and `image_path`. `image_path` may be an HTTPS URL, a local `/...` public asset path, or an object path inside a public Supabase Storage bucket named `icons` (create the bucket and upload the matching objects first). Without icon rows, profile setup remains available but icon selection is deferred. Posts use the author's current `users.icon_id`; publishing a post never changes the icon.
+
 Run `app/db/db_notifications.sql` after `db_setup.sql` to make notifications private and create them automatically for replies and reactions. This notification-only SQL does not change the Home page's post permissions. The broader `db_security.sql` is still needed before real users can safely use the app.
 
 For Google sign-in, enable the Google provider in Supabase, register that project's Supabase callback URL in the Google Cloud OAuth web client, and allow the local app redirect URL in Supabase Auth URL Configuration.

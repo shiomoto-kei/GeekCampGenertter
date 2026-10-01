@@ -7,6 +7,10 @@ import Footer from "../components/footer";
 import PostCard from "../components/post-card";
 import NewPost from "./new-post";
 import { supabase } from "@/lib/supabase/client";
+import { iconImageUrl } from "@/lib/icons";
+
+type Author = { id: number; name: string; iconPath: string | null };
+type Reply = { id: number; converted_text: string; created_at: string; author: Author | null };
 
 type Post = {
   id: number;
@@ -18,7 +22,7 @@ type Post = {
   sad_count: number;
   reply_count: number;
   created_at: string;
-  author: { id: number; name: string } | { id: number; name: string }[] | null;
+  author: Author | null;
   images_paths: { path: string }[] | null;
   images: string[];
   post_hashtags: { hashtag: { tag_name: string } | { tag_name: string }[] | null }[] | null;
@@ -45,7 +49,7 @@ export default function Home() {
   const [pendingReaction, setPendingReaction] = useState<string | null>(null);
   const [myReactions, setMyReactions] = useState<Record<number, ReactionCode>>({});
   const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
-  const [repliesByPost, setRepliesByPost] = useState<Record<number, { id: number; converted_text: string; created_at: string; author: { name: string } | { name: string }[] | null }[]>>({});
+  const [repliesByPost, setRepliesByPost] = useState<Record<number, Reply[]>>({});
   const [replyingToPostId, setReplyingToPostId] = useState<number | null>(null);
   const [replyError, setReplyError] = useState<string | null>(null);
 
@@ -113,7 +117,7 @@ export default function Home() {
         }
 
         if (cancelled) return;
-        if (matchingAuthorIds.length === 0) {
+        if (!matchingAuthorIds || matchingAuthorIds.length === 0) {
           setPosts([]);
           setMyReactions({});
           setIsLoading(false);
@@ -169,8 +173,8 @@ export default function Home() {
           return;
         }
         const authorResult = authorResponse ? await authorResponse.json() : { users: [] };
-        const authorById = new Map<number, { id: number; name: string }>(
-          (authorResult.users ?? []).map((user: { id: number; name: string }) => [user.id, user]),
+        const authorById = new Map<number, Author>(
+          (authorResult.users ?? []).map((user: Author) => [user.id, user]),
         );
         const mappedPosts = loadedPosts.map((post) => ({
           ...post,
@@ -226,14 +230,32 @@ export default function Home() {
     setReplyError(null);
     const { data, error } = await supabase
       .from("posts")
-      .select("id, converted_text, created_at, author:users!posts_author_id_fkey(name)")
+      .select("id, author_id, converted_text, created_at")
       .eq("parent_post_id", postId)
       .order("created_at", { ascending: true });
     if (error) {
       setReplyError(`返信を読み込めませんでした: ${error.message}`);
       return;
     }
-    setRepliesByPost((current) => ({ ...current, [postId]: data ?? [] }));
+    const authorIds = [...new Set((data ?? []).map((reply) => reply.author_id))];
+    const authorResponse = authorIds.length > 0
+      ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
+      : null;
+    if (authorResponse && !authorResponse.ok) {
+      setReplyError("返信の投稿者を読み込めませんでした。");
+      return;
+    }
+    const authorResult = authorResponse ? await authorResponse.json() : { users: [] };
+    const authorById = new Map<number, Author>((authorResult.users ?? []).map((user: Author) => [user.id, user]));
+    setRepliesByPost((current) => ({
+      ...current,
+      [postId]: (data ?? []).map((reply) => ({
+        id: reply.id,
+        converted_text: reply.converted_text,
+        created_at: reply.created_at,
+        author: authorById.get(reply.author_id) ?? null,
+      })),
+    }));
     setExpandedReplies((current) => ({ ...current, [postId]: true }));
   }
 
@@ -352,12 +374,13 @@ export default function Home() {
             <p className="list-message">投稿がありません。</p>
           )}
           {!isLoading && !loadError && posts.map((post) => {
-            const author = Array.isArray(post.author) ? post.author[0] : post.author;
+            const author = post.author;
             return (
               <div className="post-thread" key={post.id}>
                 <PostCard
                   userName={author?.name ?? (post.author_id === currentUser?.id ? currentUser.name : "ユーザー")}
                   userId={author?.id ?? post.author_id}
+                  iconUrl={iconImageUrl(author?.iconPath)}
                   text={post.converted_text}
                   originalText={post.original_text}
                   images={post.images}
@@ -374,9 +397,11 @@ export default function Home() {
                 {expandedReplies[post.id] && <div className="reply-list">
                   {replyError && <p className="reply-error">{replyError}</p>}
                   {(repliesByPost[post.id] ?? []).map((reply) => {
-                    const replyAuthor = Array.isArray(reply.author) ? reply.author[0] : reply.author;
                     return <article className="reply-card" key={reply.id}>
-                      <strong>{replyAuthor?.name ?? "ユーザー"}</strong>
+                      <div className="reply-author">
+                        <span className="reply-avatar">{reply.author?.iconPath && <img src={iconImageUrl(reply.author.iconPath) ?? ""} alt="" />}</span>
+                        <strong>{reply.author?.name ?? "ユーザー"}</strong>
+                      </div>
                       <p>{reply.converted_text}</p>
                     </article>;
                   })}
@@ -586,6 +611,9 @@ export default function Home() {
         }
         .reply-list { margin: -12px 0 0; padding: 10px 12px 12px; border: 1px solid #ddd; border-radius: 0 0 12px 12px; }
         .reply-card { padding: 8px 4px; border-bottom: 1px solid #eee; font-size: 12px; color: #333; }
+        .reply-author { display: flex; align-items: center; gap: 6px; }
+        .reply-avatar { width: 20px; height: 20px; overflow: hidden; border-radius: 50%; background: #ff8d82; }
+        .reply-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .reply-card p { margin: 4px 0; white-space: pre-wrap; }
         .reply-card button, .reply-button { border: 0; background: transparent; color: #16833c; cursor: pointer; font-size: 12px; }
         .reply-button { display: block; margin: 8px 0 0 auto; }
