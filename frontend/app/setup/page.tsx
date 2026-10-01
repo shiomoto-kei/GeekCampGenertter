@@ -297,7 +297,7 @@ export default function Setup() {
           display: flex;
           align-items: center;
           justify-content: center;
-          gap: 24px;
+          gap: 14px;
           margin-bottom: 24px;
           width: 100%;
         }
@@ -318,6 +318,8 @@ export default function Setup() {
           display: flex;
           flex-direction: column;
           gap: 16px;
+          flex: 1;
+          min-width: 0;
         }
 
         .input-row {
@@ -326,21 +328,24 @@ export default function Setup() {
           font-size: 20px;
           color: #111111;
           gap: 8px;
+          flex-wrap: nowrap;
+          min-width: 0;
         }
 
         .input-label {
-          width: 90px;
-          text-align: justify;
-          text-align-last: justify;
+          flex: 0 0 auto;
+          white-space: nowrap;
         }
 
         .style-select {
-          min-width: 120px;
+          flex: 1;
+          width: 0;
+          min-width: 0;
           height: 32px;
           border: 1px solid #727272;
           border-radius: 6px;
           outline: none;
-          font-size: 16px;
+          font-size: 14px;
           background: #ffffff;
           color: #111111;
         }
