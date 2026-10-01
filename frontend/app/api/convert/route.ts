@@ -86,6 +86,14 @@ SNS投稿として自然で、元の文章より極端に長くならないよ�
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   } | null;
   if (!geminiResponse.ok) {
+    const geminiErrorStatus = result?.error?.status ?? "";
+    const geminiErrorMessage = result?.error?.message ?? "";
+    if (
+      geminiResponse.status === 429 ||
+      /RESOURCE_EXHAUSTED|quota|rate.?limit/i.test(`${geminiErrorStatus} ${geminiErrorMessage}`)
+    ) {
+      return Response.json({ error: "利用上限に達しました。時間をおいて再試行してください。" }, { status: 429 });
+    }
     if (geminiResponse.status === 503) {
       return Response.json({ error: "Geminiが混雑しています。少し待ってからもう一度お試しください。" }, { status: 503 });
     }
