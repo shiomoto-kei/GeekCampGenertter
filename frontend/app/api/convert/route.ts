@@ -63,13 +63,20 @@ SNS投稿として自然で、元の文章より極端に長くならないよ�
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   let geminiResponse: Response;
   try {
-    geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-      }),
-    });
+    const requestBody = JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] });
+    const requestGemini = async () => {
+      for (let attempt = 0; ; attempt++) {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+          body: requestBody,
+        });
+        if (response.status !== 503 || attempt >= 2) return response;
+        await response.body?.cancel();
+        await new Promise((resolve) => setTimeout(resolve, 1000 * 2 ** attempt + Math.floor(Math.random() * 250)));
+      }
+    };
+    geminiResponse = await requestGemini();
   } catch {
     return Response.json({ error: "Geminiに接続できませんでした。" }, { status: 502 });
   }
@@ -79,6 +86,9 @@ SNS投稿として自然で、元の文章より極端に長くならないよ�
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   } | null;
   if (!geminiResponse.ok) {
+    if (geminiResponse.status === 503) {
+      return Response.json({ error: "Geminiが混雑しています。少し待ってからもう一度お試しください。" }, { status: 503 });
+    }
     return Response.json({ error: result?.error?.message || "Geminiで文章を変換できませんでした。" }, { status: 502 });
   }
 
