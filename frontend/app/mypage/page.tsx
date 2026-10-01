@@ -215,6 +215,7 @@ export default function MyPage() {
           setProfileName(name);
           setProfileIconId(iconId);
           setProfileIconPath(imagePath);
+          window.dispatchEvent(new Event("profile-updated"));
         }}
       />
 
