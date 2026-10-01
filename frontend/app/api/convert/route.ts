@@ -82,7 +82,7 @@ SNS投稿として自然で、元の文章より極端に長くならないよ�
   }
 
   const result = await geminiResponse.json().catch(() => null) as {
-    error?: { message?: string };
+    error?: { message?: string; status?: string };
     candidates?: { content?: { parts?: { text?: string }[] } }[];
   } | null;
   if (!geminiResponse.ok) {
