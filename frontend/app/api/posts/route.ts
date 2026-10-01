@@ -129,3 +129,72 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ postId: post.id, authorId: author.id }, { status: 201, headers: noStore });
 }
+
+export async function DELETE(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== request.nextUrl.origin) {
+    return NextResponse.json({ error: "不正なリクエストです。" }, { status: 403, headers: noStore });
+  }
+  if (!request.headers.get("content-type")?.startsWith("application/json")) {
+    return NextResponse.json({ error: "JSON形式で送信してください。" }, { status: 415, headers: noStore });
+  }
+
+  const admin = getAdminClient();
+  if (!admin) {
+    return NextResponse.json({ error: "サーバー側のSupabaseキーが未設定です。" }, { status: 503, headers: noStore });
+  }
+
+  const authorization = request.headers.get("authorization");
+  const accessToken = authorization?.startsWith("Bearer ") ? authorization.slice(7) : "";
+  const googleSub = accessToken ? await getGoogleSub(accessToken) : null;
+  const guestUuid = request.cookies.get(GUEST_COOKIE)?.value;
+  const identityColumn = googleSub ? "google_sub" : "guest_uuid";
+  const identity = googleSub ?? (guestUuid && UUID_PATTERN.test(guestUuid) ? guestUuid : null);
+  if (!identity) {
+    return NextResponse.json({ error: "ログイン情報を確認できませんでした。" }, { status: 401, headers: noStore });
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "削除対象を確認できませんでした。" }, { status: 400, headers: noStore });
+  }
+  const postId = body && typeof body === "object" ? (body as { postId?: unknown }).postId : null;
+  if (typeof postId !== "number" || !Number.isSafeInteger(postId) || postId <= 0) {
+    return NextResponse.json({ error: "削除する投稿を選び直してください。" }, { status: 400, headers: noStore });
+  }
+
+  const { data: user, error: userError } = await admin.from("users").select("id").eq(identityColumn, identity).maybeSingle();
+  if (userError || !user) {
+    return NextResponse.json({ error: "プロフィールを確認できませんでした。" }, { status: 403, headers: noStore });
+  }
+
+  const { data: post, error: postError } = await admin.from("posts")
+    .select("id")
+    .eq("id", postId)
+    .eq("author_id", user.id)
+    .maybeSingle();
+  if (postError) {
+    return NextResponse.json({ error: "投稿を確認できませんでした。" }, { status: 503, headers: noStore });
+  }
+  if (!post) {
+    return NextResponse.json({ error: "投稿が見つからないか、削除する権限がありません。" }, { status: 404, headers: noStore });
+  }
+
+  const { data: images } = await admin.from("images_paths").select("path").eq("post_id", postId);
+  const { error: detachError } = await admin.from("posts").update({ parent_post_id: null }).eq("parent_post_id", postId);
+  if (detachError) {
+    return NextResponse.json({ error: "返信を保護できなかったため、投稿を削除できませんでした。" }, { status: 503, headers: noStore });
+  }
+
+  const { error: deleteError } = await admin.from("posts").delete().eq("id", postId).eq("author_id", user.id);
+  if (deleteError) {
+    return NextResponse.json({ error: "投稿を削除できませんでした。" }, { status: 503, headers: noStore });
+  }
+
+  const storagePaths = (images ?? []).map((image) => image.path).filter((path) => path && !/^https?:\/\//i.test(path));
+  if (storagePaths.length > 0) await admin.storage.from("post-images").remove(storagePaths);
+
+  return NextResponse.json({ ok: true }, { headers: noStore });
+}

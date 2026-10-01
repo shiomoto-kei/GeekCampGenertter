@@ -140,6 +140,23 @@ export default function MyPage() {
     }
   }
 
+  async function deleteMyPost(postId: number) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+
+    const response = await fetch("/api/posts", {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        ...(data.session ? { Authorization: `Bearer ${data.session.access_token}` } : {}),
+      },
+      body: JSON.stringify({ postId }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error ?? "投稿を削除できませんでした。");
+    setMyPosts((posts) => posts.filter((post) => post.id !== postId));
+  }
+
   return (
     <div className="page">
       <Header />
@@ -187,6 +204,8 @@ export default function MyPage() {
               userName={profileName}
               userId={post.author_id}
               iconUrl={iconImageUrl(profileIconPath)}
+              showDelete
+              onDelete={() => deleteMyPost(post.id)}
               text={post.converted_text}
               originalText={post.original_text}
               images={post.images}
