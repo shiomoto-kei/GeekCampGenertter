@@ -5,7 +5,7 @@ type StyleProfile = { id: number; name: string };
 export async function POST(request: Request) {
   const apiKey = process.env.GEMINI_API_KEY;
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!apiKey) return Response.json({ error: "サーバーにGemini APIキーが設定されていません。" }, { status: 503 });
   if (!supabaseUrl || !supabaseKey) return Response.json({ error: "Supabaseの接続設定がありません。" }, { status: 503 });
 
