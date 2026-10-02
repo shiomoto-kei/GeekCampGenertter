@@ -2,6 +2,21 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { GUEST_COOKIE, UUID_PATTERN, getAdminClient, getGoogleSub, getPublicClient } from "@/lib/auth/server";
 
+function canonicalIconGender(iconGender: string): "男性" | "女性" | null {
+  const value = iconGender.trim().toLocaleLowerCase();
+  const maleValues = ["男性", "男", "男子", "男性用", "male", "man", "boy", "m"];
+  const femaleValues = ["女性", "女", "女子", "女性用", "レディース", "female", "woman", "girl", "f"];
+  if (maleValues.includes(value)) return "男性";
+  if (femaleValues.includes(value)) return "女性";
+  return null;
+}
+
+function iconGenerationForStyle(styleName: string) {
+  if (styleName === "中学生") return "高校生";
+  if (styleName === "アラサー") return "中年";
+  return styleName;
+}
+
 export async function GET() {
   const supabase = getPublicClient();
   if (!supabase) {
@@ -59,21 +74,32 @@ export async function POST(request: NextRequest) {
 
   const { data: style, error: styleError } = await admin
     .from("style_profiles")
-    .select("id")
+    .select("id,name")
     .eq("id", styleId)
     .maybeSingle();
   if (styleError || !style) {
     return NextResponse.json({ error: "選択されたスタイルが見つかりません。" }, { status: 400 });
   }
+  if (style.name === "赤ちゃん" || style.name === "小学生") {
+    return NextResponse.json({ error: "選択できない年代です。" }, { status: 400 });
+  }
 
+  let selectedGender: "男性" | "女性" | null = null;
   if (iconId !== null) {
-    const { data: icon, error: iconError } = await admin.from("icons").select("id").eq("id", iconId).maybeSingle();
-    if (iconError || !icon) {
+    const { data: icon, error: iconError } = await admin.from("icons").select("id,gender,generation").eq("id", iconId).maybeSingle();
+    selectedGender = icon ? canonicalIconGender(icon.gender) : null;
+    if (iconError || !icon || icon.generation.trim() !== iconGenerationForStyle(style.name) || !selectedGender) {
       return NextResponse.json({ error: "選択されたアイコンが見つかりません。" }, { status: 400 });
     }
   }
 
-  const profile = { name, default_style_id: styleId, ...(iconId !== null ? { icon_id: iconId } : {}) };
+  const profile = {
+    name,
+    default_style_id: styleId,
+    gender: selectedGender,
+    generation: style.name,
+    ...(iconId !== null ? { icon_id: iconId } : {}),
+  };
 
   if (mode === "google") {
     const accessToken = input.accessToken;
