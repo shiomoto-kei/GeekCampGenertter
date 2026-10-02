@@ -256,9 +256,9 @@ export default function MyPage() {
         .profile-row { display: flex; align-items: center; gap: 14px; padding: 4px 0 0 10px; }
         .profile-icon { width: 58px; height: 58px; flex-shrink: 0; overflow: hidden; border-radius: 50%; background: #d9d9d9; }
         .profile-icon img { width: 100%; height: 100%; object-fit: cover; }
-        .profile-name-area { flex: 1; display: flex; flex-direction: column; align-items: flex-end; padding-right: 8px; }
-        .profile-name { align-self: flex-start; margin-left: 16px; font-size: 16px; font-weight: 700; color: #111; }
-        .profile-age { margin-top: 4px; font-size: 14px; color: #111; }
+        .profile-name-area { position: relative; flex: 1; min-width: 0; height: 58px; display: flex; flex-direction: column; justify-content: center; padding-right: 8px; }
+        .profile-name { margin-left: 16px; font-size: 15px; line-height: 20px; font-weight: 700; color: #111; overflow-wrap: anywhere; }
+        .profile-age { position: absolute; right: 8px; bottom: 0; font-size: 12px; line-height: 14px; color: #111; }
         .profile-mail { margin: 0; text-align: center; font-size: 9px; color: #aaa; white-space: nowrap; }
         .profile-buttons { display: flex; justify-content: space-between; padding: 0 12px 4px; }
         .profile-buttons button { height: 18px; padding: 0; border-radius: 4px; font-size: 8.5px; cursor: pointer; }
