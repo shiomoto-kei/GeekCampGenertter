@@ -1,16 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import PostCard from "../components/post-card";
 import NewPost from "./new-post";
+import PostDetailModal from "./post-detail-modal";
 import { supabase } from "@/lib/supabase/client";
 import { iconImageUrl } from "@/lib/icons";
 
 type Author = { id: number; name: string; iconPath: string | null };
-type Reply = { id: number; converted_text: string; created_at: string; author: Author | null };
+type Reply = { id: number; author_id: number; converted_text: string; created_at: string; author: Author | null };
 
 type Post = {
   id: number;
@@ -54,10 +55,12 @@ export default function Home() {
   const [reactionError, setReactionError] = useState<string | null>(null);
   const [pendingReaction, setPendingReaction] = useState<string | null>(null);
   const [myReactions, setMyReactions] = useState<Record<number, ReactionCode>>({});
-  const [expandedReplies, setExpandedReplies] = useState<Record<number, boolean>>({});
-  const [repliesByPost, setRepliesByPost] = useState<Record<number, Reply[]>>({});
-  const [replyingToPostId, setReplyingToPostId] = useState<number | null>(null);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [detailReplies, setDetailReplies] = useState<Reply[]>([]);
+  const [isLoadingReplies, setIsLoadingReplies] = useState(false);
   const [replyError, setReplyError] = useState<string | null>(null);
+  const replyRequestId = useRef(0);
+  const [replyingToPostId, setReplyingToPostId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -342,42 +345,49 @@ export default function Home() {
     setSearchTerm(query);
   }
 
-  async function toggleReplies(postId: number) {
-    if (expandedReplies[postId]) {
-      setExpandedReplies((current) => ({ ...current, [postId]: false }));
-      return;
-    }
+  async function openPostDetails(post: Post) {
+    const requestId = ++replyRequestId.current;
+    setSelectedPost(post);
+    setDetailReplies([]);
     setReplyError(null);
-    const { data, error } = await supabase
-      .from("posts")
-      .select("id, author_id, converted_text, created_at")
-      .eq("parent_post_id", postId)
-      .order("created_at", { ascending: true });
-    if (error) {
-      setReplyError(`返信を読み込めませんでした: ${error.message}`);
-      return;
-    }
-    const authorIds = [...new Set((data ?? []).map((reply) => reply.author_id))];
-    const authorResponse = authorIds.length > 0
-      ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
-      : null;
-    if (authorResponse && !authorResponse.ok) {
-      setReplyError("返信の投稿者を読み込めませんでした。");
-      return;
-    }
-    const authorResult = authorResponse ? await authorResponse.json() : { users: [] };
-    const authorById = new Map<number, Author>((authorResult.users ?? []).map((user: Author) => [user.id, user]));
-    setRepliesByPost((current) => ({
-      ...current,
-      [postId]: (data ?? []).map((reply) => ({
+    setIsLoadingReplies(true);
+    try {
+      const { data, error } = await supabase
+        .from("posts")
+        .select("id, author_id, converted_text, created_at")
+        .eq("parent_post_id", post.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+
+      const authorIds = [...new Set((data ?? []).map((reply) => reply.author_id))];
+      const authorResponse = authorIds.length > 0
+        ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
+        : null;
+      if (authorResponse && !authorResponse.ok) throw new Error("返信の投稿者を読み込めませんでした。");
+      const authorResult = authorResponse ? await authorResponse.json() : { users: [] };
+      const authorById = new Map<number, Author>((authorResult.users ?? []).map((user: Author) => [user.id, user]));
+      if (replyRequestId.current !== requestId) return;
+      setDetailReplies((data ?? []).map((reply) => ({
         id: reply.id,
+        author_id: reply.author_id,
         converted_text: reply.converted_text,
         created_at: reply.created_at,
         author: authorById.get(reply.author_id) ?? null,
-      })),
-    }));
-    setExpandedReplies((current) => ({ ...current, [postId]: true }));
+      })));
+    } catch (error) {
+      if (replyRequestId.current === requestId) {
+        setReplyError(error instanceof Error ? `返信を読み込めませんでした: ${error.message}` : "返信を読み込めませんでした。");
+      }
+    } finally {
+      if (replyRequestId.current === requestId) setIsLoadingReplies(false);
+    }
   }
+
+  const closePostDetails = useCallback(() => {
+    replyRequestId.current += 1;
+    setSelectedPost(null);
+    setIsLoadingReplies(false);
+  }, []);
 
   async function toggleReaction(postId: number, code: ReactionCode) {
     const key = `${postId}:${code}`;
@@ -420,6 +430,10 @@ export default function Home() {
       setPendingReaction(null);
     }
   }
+
+  const modalPost = selectedPost
+    ? posts.find((post) => post.id === selectedPost.id) ?? selectedPost
+    : null;
 
   return (
     <div className="home-page">
@@ -506,21 +520,9 @@ export default function Home() {
                   selectedReaction={myReactions[post.id] ?? null}
                   onReact={(code) => toggleReaction(post.id, code)}
                   pendingReaction={pendingReaction?.startsWith(`${post.id}:`) ?? false}
-                  onToggleReplies={() => void toggleReplies(post.id)}
+                  onToggleReplies={() => void openPostDetails(post)}
+                  onOpenDetails={() => void openPostDetails(post)}
                 />
-                {expandedReplies[post.id] && <div className="reply-list">
-                  {replyError && <p className="reply-error">{replyError}</p>}
-                  {(repliesByPost[post.id] ?? []).map((reply) => {
-                    return <article className="reply-card" key={reply.id}>
-                      <div className="reply-author">
-                        <span className="reply-avatar">{reply.author?.iconPath && <img src={iconImageUrl(reply.author.iconPath) ?? ""} alt="" />}</span>
-                        <strong>{reply.author?.name ?? "ユーザー"}</strong>
-                      </div>
-                      <p>{reply.converted_text}</p>
-                    </article>;
-                  })}
-                  <button className="reply-button" type="button" onClick={() => setReplyingToPostId(post.id)}>返信を書く</button>
-                </div>}
               </div>
             );
           })}
@@ -567,10 +569,25 @@ export default function Home() {
         onCreated={() => {
           setIsModalOpen(false);
           setReplyingToPostId(null);
-          setExpandedReplies({});
-          setRepliesByPost({});
           setPageIndex(0);
           setRefreshVersion((current) => current + 1);
+        }}
+      />
+
+      <PostDetailModal
+        post={modalPost}
+        replies={detailReplies}
+        isLoadingReplies={isLoadingReplies}
+        replyError={replyError}
+        selectedReaction={selectedPost ? myReactions[selectedPost.id] ?? null : null}
+        pendingReaction={selectedPost ? pendingReaction?.startsWith(`${selectedPost.id}:`) ?? false : false}
+        onReact={(code) => {
+          if (selectedPost) void toggleReaction(selectedPost.id, code);
+        }}
+        onClose={closePostDetails}
+        onReply={() => {
+          if (selectedPost) setReplyingToPostId(selectedPost.id);
+          closePostDetails();
         }}
       />
 

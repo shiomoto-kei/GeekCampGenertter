@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from "react";
 import ConfirmModal from "./confirm-modal";
 
 type ReactionCode = "like" | "laugh" | "sad";
@@ -24,6 +25,7 @@ type PostCardProps = {
   onReact?: (code: ReactionCode) => void;
   pendingReaction?: boolean;
   onToggleReplies?: () => void;
+  onOpenDetails?: () => void;
 };
 
 export default function PostCard({
@@ -45,12 +47,25 @@ export default function PostCard({
   onReact,
   pendingReaction = false,
   onToggleReplies,
+  onOpenDetails,
 }: PostCardProps) {
   const [openImageIndex, setOpenImageIndex] = useState<number | null>(null);
   const [showOriginalText, setShowOriginalText] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+
+  function handleCardClick(event: MouseEvent<HTMLElement>) {
+    const target = event.target;
+    if (target instanceof Element && target.closest("button,a,input,textarea,select,[role='dialog']")) return;
+    onOpenDetails?.();
+  }
+
+  function handleCardKeyDown(event: ReactKeyboardEvent<HTMLElement>) {
+    if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
+    event.preventDefault();
+    onOpenDetails?.();
+  }
 
   async function confirmDelete() {
     if (!onDelete || isDeleting) return;
@@ -94,7 +109,14 @@ export default function PostCard({
   }, [openImageIndex, images.length]);
 
   return (
-    <article className="post-card">
+    <article
+      className={`post-card ${onOpenDetails ? "clickable" : ""}`}
+      onClick={onOpenDetails ? handleCardClick : undefined}
+      onKeyDown={onOpenDetails ? handleCardKeyDown : undefined}
+      role={onOpenDetails ? "button" : undefined}
+      tabIndex={onOpenDetails ? 0 : undefined}
+      aria-label={onOpenDetails ? "投稿と返信を表示" : undefined}
+    >
       <div className="post-header">
         <div className="user-info">
           <div className="user-icon">{iconUrl && <img src={iconUrl} alt="" />}</div>
@@ -122,14 +144,14 @@ export default function PostCard({
             <button
               className="post-text"
               type="button"
-              onClick={() => setShowOriginalText((current) => !current)}
-              aria-label={showOriginalText ? "AI変換文に戻す" : "原文を表示"}
+              onClick={() => onOpenDetails ? onOpenDetails() : setShowOriginalText((current) => !current)}
+              aria-label={onOpenDetails ? "投稿と返信を表示" : showOriginalText ? "AI変換文に戻す" : "原文を表示"}
               aria-expanded={showOriginalText}
             >
               {showOriginalText ? originalText : text}
             </button>
             <span className="text-mode-label">
-              {showOriginalText ? "原文" : "変換文"} · 本文タップで切り替え
+              {showOriginalText ? "原文" : "変換文"} · {onOpenDetails ? "タップして投稿を表示" : "本文タップで切り替え"}
             </span>
           </>
         ) : (
@@ -287,6 +309,9 @@ export default function PostCard({
           border: 1px solid #bdbdbd;
           border-radius: 14px;
         }
+        .post-card.clickable { cursor: pointer; transition: box-shadow 120ms ease, border-color 120ms ease; }
+        .post-card.clickable:hover { border-color: #8bcf9b; box-shadow: 0 3px 12px rgba(20, 90, 40, .08); }
+        .post-card.clickable:focus-visible { outline: 2px solid #299d48; outline-offset: 2px; }
         .post-header {
           display: flex;
           align-items: center;
