@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Header from "../components/header";
 import Footer from "../components/footer";
 import NotificationItem from "../components/notification-item";
@@ -23,8 +23,13 @@ export default function Notice() {
   const [notifications, setNotifications] = useState<NoticeData[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [updating, setUpdating] = useState(false);
+  const loadingMoreRef = useRef(false);
+  const readAllVersion = useRef(0);
 
   useEffect(() => {
     let active = true;
@@ -39,8 +44,9 @@ export default function Notice() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error ?? "通知を取得できませんでした。");
         if (active) {
-          setNotifications(result.notifications);
+          setNotifications(result.notifications ?? []);
           setUnreadCount(result.unreadCount);
+          setHasMore(result.hasMore === true);
         }
       } catch (error) {
         if (active) setErrorMessage(error instanceof Error ? error.message : "通知を取得できませんでした。");
@@ -51,6 +57,38 @@ export default function Notice() {
     load();
     return () => { active = false; };
   }, []);
+
+  async function loadMore() {
+    if (loadingMoreRef.current || !hasMore) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError("");
+    const readVersion = readAllVersion.current;
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) throw new Error("Googleログインが必要です。");
+      const response = await fetch(`/api/notifications?offset=${notifications.length}`, {
+        headers: { Authorization: `Bearer ${data.session.access_token}` },
+        cache: "no-store",
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? "通知を取得できませんでした。");
+      const nextItems = (result.notifications ?? []) as NoticeData[];
+      setNotifications((current) => {
+        const existingIds = new Set(current.map((item) => item.id));
+        return [...current, ...nextItems.filter((item) => !existingIds.has(item.id)).map((item) =>
+          readAllVersion.current === readVersion ? item : { ...item, isRead: true },
+        )];
+      });
+      setHasMore(result.hasMore === true);
+      if (readAllVersion.current === readVersion) setUnreadCount(result.unreadCount);
+    } catch (error) {
+      setLoadMoreError(error instanceof Error ? error.message : "通知を取得できませんでした。");
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }
 
   async function markAllRead() {
     setUpdating(true);
@@ -64,6 +102,7 @@ export default function Notice() {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "既読にできませんでした。");
+      readAllVersion.current += 1;
       setNotifications((items) => items.map((item) => ({ ...item, isRead: true })));
       setUnreadCount(0);
       window.dispatchEvent(new Event("notifications-updated"));
@@ -108,6 +147,14 @@ export default function Notice() {
             />
           ))}
         </div>
+        {!loading && hasMore && (
+          <div className="load-more-area">
+            {loadMoreError && <p className="notice-message" role="alert">{loadMoreError}</p>}
+            <button type="button" className="load-more-button" onClick={() => void loadMore()} disabled={loadingMore}>
+              {loadingMore ? "読み込み中…" : loadMoreError ? "もう一度読み込む" : "もっと見る"}
+            </button>
+          </div>
+        )}
       </main>
 
       {/* フッター */}
@@ -222,6 +269,10 @@ export default function Notice() {
         .read-all { align-self: flex-end; margin: 0 16px 12px; border: 0; background: transparent; color: #299d48; font-size: 13px; font-weight: 700; cursor: pointer; }
         .read-all:disabled { opacity: .5; cursor: wait; }
         .notice-message { margin: 24px 16px; color: #555; font-size: 14px; text-align: center; }
+        .load-more-area { width: 100%; padding: 20px 16px; box-sizing: border-box; text-align: center; }
+        .load-more-area .notice-message { margin: 0 0 12px; color: #b42318; }
+        .load-more-button { padding: 10px 24px; border: 1px solid #299d48; border-radius: 20px; background: #fff; color: #237d3c; font-size: 14px; font-weight: 700; cursor: pointer; }
+        .load-more-button:disabled { opacity: .55; cursor: wait; }
       `}</style>
     </div>
   );

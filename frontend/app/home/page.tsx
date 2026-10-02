@@ -100,7 +100,7 @@ export default function Home() {
 
   useEffect(() => {
     let cancelled = false;
-    const loadingMore = pageIndex > 0 && !searchTerm;
+    const loadingMore = pageIndex > 0;
 
     async function loadPosts() {
       setReactionError(null);
@@ -117,133 +117,49 @@ export default function Home() {
         setMyReactions({});
       }
 
-      let matchingAuthorIds: number[] | null = null;
-      let matchingPostIds: number[] | null = null;
-      if (searchTerm.startsWith("#")) {
-        const tagQuery = searchTerm.slice(1).trim().replace(/^#+/, "");
-        if (!tagQuery) {
-          if (!cancelled) {
-            setPosts([]);
-            setMyReactions({});
-            setIsLoading(false);
-          }
-          return;
+      let data: FetchedPost[] = [];
+      let hasNextPage = false;
+      let queryError: string | null = null;
+      if (searchTerm) {
+        const params = new URLSearchParams({ q: searchTerm, tab: activeTab, page: String(pageIndex) });
+        const response = await fetch(`/api/posts/search?${params}`, { cache: "no-store" });
+        const result = await response.json();
+        if (response.ok) {
+          data = result.posts as FetchedPost[];
+          hasNextPage = result.hasMore === true;
+        } else {
+          queryError = result.error ?? "検索結果を読み込めませんでした。";
         }
-
-        try {
-          const safeTag = tagQuery.replace(/[\\%_]/g, "\\$&");
-          const { data: hashtags, error: hashtagError } = await supabase
-            .from("hashtags")
-            .select("id")
-            .ilike("tag_name", safeTag)
-            .limit(50);
-          if (hashtagError) throw hashtagError;
-          const hashtagIds = (hashtags ?? []).map((hashtag) => hashtag.id);
-          if (hashtagIds.length > 0) {
-            const { data: postLinks, error: linksError } = await supabase
-              .from("post_hashtags")
-              .select("post_id")
-              .in("hashtag_id", hashtagIds)
-              .limit(50);
-            if (linksError) throw linksError;
-            matchingPostIds = [...new Set((postLinks ?? []).map((link) => link.post_id))];
-          } else {
-            matchingPostIds = [];
-          }
-        } catch (error) {
-          if (!cancelled) {
-            const message = error instanceof Error ? error.message : "ハッシュタグを検索できませんでした。";
-            setLoadError(message);
-            setPosts([]);
-            setMyReactions({});
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        if (cancelled) return;
-        if (!matchingPostIds || matchingPostIds.length === 0) {
-          setPosts([]);
-          setMyReactions({});
-          setIsLoading(false);
-          return;
-        }
-      } else if (searchTerm.startsWith("@")) {
-        const accountQuery = searchTerm.slice(1).trim();
-        if (!accountQuery) {
-          if (!cancelled) {
-            setPosts([]);
-            setMyReactions({});
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        try {
-          const response = await fetch(`/api/users?q=${encodeURIComponent(accountQuery)}`, { cache: "no-store" });
-          const result = await response.json();
-          if (!response.ok) throw new Error(result.error ?? "ユーザーを検索できませんでした。");
-          matchingAuthorIds = (result.users ?? []).map((user: { id: number }) => user.id);
-        } catch (error) {
-          if (!cancelled) {
-            setLoadError(error instanceof Error ? error.message : "ユーザーを検索できませんでした。");
-            setPosts([]);
-            setMyReactions({});
-            setIsLoading(false);
-          }
-          return;
-        }
-
-        if (cancelled) return;
-        if (!matchingAuthorIds || matchingAuthorIds.length === 0) {
-          setPosts([]);
-          setMyReactions({});
-          setIsLoading(false);
-          return;
-        }
-      }
-
-      let query = supabase
-        .from("posts")
-        .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, style_profile:style_profiles(name), images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
-        .is("parent_post_id", null);
-
-      if (activeTab === "recommend") {
-        query = query
-          .order("reaction_total", { ascending: false })
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: false });
       } else {
-        query = query
-          .order("created_at", { ascending: false })
-          .order("id", { ascending: false });
-      }
-      query = searchTerm
-        ? query.limit(50)
-        : query.range(pageIndex * POSTS_PER_PAGE, (pageIndex + 1) * POSTS_PER_PAGE);
+        let query = supabase
+          .from("posts")
+          .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, style_profile:style_profiles(name), images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
+          .is("parent_post_id", null);
 
-      if (matchingPostIds !== null) {
-        query = query.in("id", matchingPostIds);
-      } else if (matchingAuthorIds !== null) {
-        query = query.in("author_id", matchingAuthorIds);
-      } else if (searchTerm) {
-        const safeSearchTerm = searchTerm.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-        query = query.or(
-          `converted_text.ilike."%${safeSearchTerm}%",original_text.ilike."%${safeSearchTerm}%"`,
-        );
+        if (activeTab === "recommend") {
+          query = query
+            .order("reaction_total", { ascending: false })
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false });
+        } else {
+          query = query
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false });
+        }
+        const result = await query.range(pageIndex * POSTS_PER_PAGE, (pageIndex + 1) * POSTS_PER_PAGE);
+        queryError = result.error?.message ?? null;
+        data = (result.data ?? []).slice(0, POSTS_PER_PAGE) as FetchedPost[];
+        hasNextPage = (result.data?.length ?? 0) > POSTS_PER_PAGE;
       }
-
-      const { data, error } = await query;
 
       if (cancelled) return;
-      if (error) {
-        const message = `投稿を読み込めませんでした: ${error.message}`;
+      if (queryError) {
+        const message = `投稿を読み込めませんでした: ${queryError}`;
         if (loadingMore) setLoadMoreError(message);
         else setLoadError(message);
       } else {
         const bucket = "post-images";
-        const hasNextPage = !searchTerm && (data?.length ?? 0) > POSTS_PER_PAGE;
-        const loadedPosts = (searchTerm ? data ?? [] : (data ?? []).slice(0, POSTS_PER_PAGE)) as FetchedPost[];
+        const loadedPosts = data;
         const authorIds = [...new Set(loadedPosts.map((post) => post.author_id))];
         const authorResponse = authorIds.length > 0
           ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
@@ -537,7 +453,7 @@ export default function Home() {
               </div>
             );
           })}
-          {!isLoading && !loadError && !searchTerm && hasMorePosts && (
+          {!isLoading && !loadError && hasMorePosts && (
             <div className="load-more-area">
               {loadMoreError && <p className="list-message error-message" role="alert">{loadMoreError}</p>}
               <button
