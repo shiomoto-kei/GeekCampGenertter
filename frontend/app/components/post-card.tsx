@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent } from "react";
+import Link from "next/link";
 import ConfirmModal from "./confirm-modal";
 
 type ReactionCode = "like" | "laugh" | "sad";
@@ -10,6 +11,8 @@ type PostCardProps = {
   userName: string;
   userId?: number;
   iconUrl?: string | null;
+  styleName?: string | null;
+  postHref?: string;
   text: string;
   showDelete?: boolean;
   onDelete?: () => Promise<void>;
@@ -32,6 +35,8 @@ export default function PostCard({
   userName,
   userId,
   iconUrl = null,
+  styleName = null,
+  postHref,
   text,
   showDelete = false,
   onDelete,
@@ -113,9 +118,9 @@ export default function PostCard({
       className={`post-card ${onOpenDetails ? "clickable" : ""}`}
       onClick={onOpenDetails ? handleCardClick : undefined}
       onKeyDown={onOpenDetails ? handleCardKeyDown : undefined}
-      role={onOpenDetails ? "button" : undefined}
-      tabIndex={onOpenDetails ? 0 : undefined}
-      aria-label={onOpenDetails ? "投稿と返信を表示" : undefined}
+      role={onOpenDetails && !postHref ? "button" : undefined}
+      tabIndex={onOpenDetails && !postHref ? 0 : undefined}
+      aria-label={onOpenDetails && !postHref ? "投稿と返信を表示" : undefined}
     >
       <div className="post-header">
         <div className="user-info">
@@ -126,16 +131,19 @@ export default function PostCard({
           </div>
         </div>
 
-        {showDelete && (
-          <button
-            className="delete-button"
-            type="button"
-            aria-label="投稿を削除"
-            onClick={() => setIsDeleteModalOpen(true)}
-          >
-            <img src="/trash-icon.svg" alt="" width={24} height={24} />
-          </button>
-        )}
+        <div className="post-header-actions">
+          {styleName && <span className="style-badge" aria-label={`変換スタイル: ${styleName}`}>{styleName}</span>}
+          {showDelete && (
+            <button
+              className="delete-button"
+              type="button"
+              aria-label="投稿を削除"
+              onClick={() => setIsDeleteModalOpen(true)}
+            >
+              <img src="/trash-icon.svg" alt="" width={24} height={24} />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="post-content">
@@ -291,6 +299,8 @@ export default function PostCard({
         </div>
       )}
 
+      {postHref && <Link href={postHref} className="detail-link">投稿ページを開く →</Link>}
+
       <ConfirmModal
         isOpen={isDeleteModalOpen}
         onClose={() => { if (!isDeleting) { setIsDeleteModalOpen(false); setDeleteError(""); } }}
@@ -321,11 +331,13 @@ export default function PostCard({
           display: flex;
           align-items: center;
           gap: 8px;
+          min-width: 0;
         }
         .user-identity {
           display: flex;
           flex-direction: column;
           gap: 1px;
+          min-width: 0;
         }
         .user-icon {
           width: 22px;
@@ -339,11 +351,18 @@ export default function PostCard({
         .user-name {
           font-size: 13px;
           color: #333;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
         }
         .user-id {
           color: #888;
           font-size: 10px;
         }
+        .post-header-actions { display: flex; align-items: center; gap: 5px; flex: 0 0 auto; margin-left: 8px; }
+        .style-badge { display: inline-block; max-width: 90px; padding: 3px 7px; overflow: hidden; border-radius: 999px; background: #e8f5e8; color: #22743b; font-size: 10px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+        .detail-link { display: inline-block; margin-top: 8px; color: #22743b; font-size: 11px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+        .detail-link:focus-visible { outline: 2px solid #299d48; outline-offset: 3px; }
         .delete-button {
           display: flex;
           align-items: center;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { iconImageUrl } from "@/lib/icons";
 
 type Author = { id: number; name: string; iconPath: string | null };
@@ -17,8 +18,9 @@ type Post = {
   sad_count: number;
   reply_count: number;
   created_at: string;
+  styleName: string | null;
 };
-type Reply = { id: number; author_id: number; converted_text: string; created_at: string; author: Author | null };
+type Reply = { id: number; author_id: number; converted_text: string; created_at: string; styleName: string | null; author: Author | null };
 type ReactionCode = "like" | "laugh" | "sad";
 type Props = {
   post: Post | null;
@@ -32,13 +34,14 @@ type Props = {
   onReply: () => void;
 };
 
-function AuthorLine({ author, isMain = false }: { author: Author | null; isMain?: boolean }) {
+function AuthorLine({ author, styleName, isMain = false }: { author: Author | null; styleName: string | null; isMain?: boolean }) {
   const iconUrl = author?.iconPath ? iconImageUrl(author.iconPath) : null;
   return <div className="author-line" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: isMain ? 7 : 6, ...(isMain ? { padding: "2px 3px 7px", borderBottom: "1px solid #c9c9c9" } : {}) }}>
     <span className="avatar" style={{ display: "block", width: isMain ? 26 : 22, height: isMain ? 26 : 22, flex: `0 0 ${isMain ? 26 : 22}px`, overflow: "hidden", borderRadius: "50%" }}>
       {iconUrl && <img src={iconUrl} alt="" style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />}
     </span>
     <strong style={{ display: "block", minWidth: 0, overflow: "hidden", fontSize: isMain ? 12 : 10, fontWeight: 600, lineHeight: 1.3, textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{author?.name ?? "ユーザー"}</strong>
+    {styleName && <span style={{ flex: "0 0 auto", maxWidth: 78, overflow: "hidden", padding: "2px 6px", borderRadius: 999, background: "#e8f5e8", color: "#22743b", fontSize: isMain ? 9 : 8, fontWeight: 700, textOverflow: "ellipsis", whiteSpace: "nowrap" }} aria-label={`変換スタイル: ${styleName}`}>{styleName}</span>}
   </div>;
 }
 
@@ -70,11 +73,6 @@ export default function PostDetailModal({ post, replies, isLoadingReplies, reply
     };
   }, [post, openImageIndex, onClose]);
 
-  useEffect(() => {
-    setShowOriginal(false);
-    setOpenImageIndex(null);
-  }, [post?.id]);
-
   if (!post) return null;
 
   return <div className="overlay" role="presentation" onClick={onClose}>
@@ -82,7 +80,7 @@ export default function PostDetailModal({ post, replies, isLoadingReplies, reply
       <button type="button" className="close" aria-label="閉じる" onClick={onClose}>×</button>
       <div className="scroll-area">
         <article className="main-post">
-          <AuthorLine author={post.author} isMain />
+          <AuthorLine author={post.author} styleName={post.styleName} isMain />
           <button type="button" className="post-text" onClick={() => setShowOriginal((value) => !value)}>
             {showOriginal ? post.original_text : post.converted_text}
           </button>
@@ -106,10 +104,12 @@ export default function PostDetailModal({ post, replies, isLoadingReplies, reply
           {!isLoadingReplies && replyError && <p className="message error">{replyError}</p>}
           {!isLoadingReplies && !replyError && replies.length === 0 && <p className="message">返信はまだありません。</p>}
           {!isLoadingReplies && !replyError && replies.map((reply) => <article className="reply" key={reply.id} style={{ padding: "6px 7px", borderTop: "1px solid #c9c9c9" }}>
-            <AuthorLine author={reply.author} />
+            <AuthorLine author={reply.author} styleName={reply.styleName} />
             <p style={{ margin: "4px 0 0 28px", color: "#333", fontSize: 9, lineHeight: 1.4, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{reply.converted_text}</p>
+            <Link href={`/posts/${reply.id}`} className="reply-permalink">返信ページを開く →</Link>
           </article>)}
         </div>
+        <Link href={`/posts/${post.id}`} className="post-permalink">この投稿のページを開く →</Link>
         <button type="button" className="reply-action" onClick={onReply}>返信を書く</button>
       </div>
 
@@ -150,6 +150,8 @@ export default function PostDetailModal({ post, replies, isLoadingReplies, reply
       .reaction.selected .emoji-circle { border-color: #16833c; background: #dff7e7; }
       .reply { padding: 6px 7px; border-top: 1px solid #c9c9c9; }
       .reply > p { margin: 4px 0 0 28px; color: #333; font-size: 9px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .post-permalink,.reply-permalink { display: inline-block; margin: 7px 8px; color: #22743b; font-size: 10px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+      .reply-permalink { margin: 3px 0 0 28px; font-size: 9px; }
       .message { margin: 0; padding: 14px 10px; color: #777; font-size: 10px; text-align: center; }
       .error { color: #b42318; }
       .reply-action { display: block; margin: 6px 8px 8px auto; padding: 4px 9px; border: 0; border-radius: 14px; background: #e4f6dc; color: #27743c; font-size: 9px; cursor: pointer; }

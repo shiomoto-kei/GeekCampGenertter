@@ -11,7 +11,8 @@ import { supabase } from "@/lib/supabase/client";
 import { iconImageUrl } from "@/lib/icons";
 
 type Author = { id: number; name: string; iconPath: string | null };
-type Reply = { id: number; author_id: number; converted_text: string; created_at: string; author: Author | null };
+type StyleRelation = { name: string } | { name: string }[] | null;
+type Reply = { id: number; author_id: number; converted_text: string; created_at: string; styleName: string | null; author: Author | null };
 
 type Post = {
   id: number;
@@ -23,12 +24,18 @@ type Post = {
   sad_count: number;
   reply_count: number;
   created_at: string;
+  styleName: string | null;
   author: Author | null;
   images_paths: { path: string }[] | null;
   images: string[];
   post_hashtags: { hashtag: { tag_name: string } | { tag_name: string }[] | null }[] | null;
   tags: string[];
 };
+type FetchedPost = Omit<Post, "images" | "tags" | "author" | "styleName"> & { style_profile: StyleRelation };
+
+function styleNameOf(style: StyleRelation) {
+  return Array.isArray(style) ? style[0]?.name ?? null : style?.name ?? null;
+}
 
 type ReactionCode = "like" | "laugh" | "sad";
 type CurrentUser = { id: number; name: string; default_style_id: number };
@@ -198,7 +205,7 @@ export default function Home() {
 
       let query = supabase
         .from("posts")
-        .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
+        .select("id, author_id, original_text, converted_text, like_count, laugh_count, sad_count, reply_count, created_at, style_profile:style_profiles(name), images_paths(path), post_hashtags(hashtag:hashtags(tag_name))")
         .is("parent_post_id", null);
 
       if (activeTab === "recommend") {
@@ -236,7 +243,7 @@ export default function Home() {
       } else {
         const bucket = "post-images";
         const hasNextPage = !searchTerm && (data?.length ?? 0) > POSTS_PER_PAGE;
-        const loadedPosts = (searchTerm ? data ?? [] : (data ?? []).slice(0, POSTS_PER_PAGE)) as Omit<Post, "images" | "tags" | "author">[];
+        const loadedPosts = (searchTerm ? data ?? [] : (data ?? []).slice(0, POSTS_PER_PAGE)) as FetchedPost[];
         const authorIds = [...new Set(loadedPosts.map((post) => post.author_id))];
         const authorResponse = authorIds.length > 0
           ? await fetch(`/api/users?ids=${authorIds.join(",")}`, { cache: "no-store" })
@@ -261,6 +268,7 @@ export default function Home() {
         );
         const mappedPosts = loadedPosts.map((post) => ({
           ...post,
+          styleName: styleNameOf(post.style_profile),
           author: authorById.get(post.author_id) ?? null,
           images: (post.images_paths ?? []).map(({ path }) => {
             if (/^https?:\/\//i.test(path)) return path;
@@ -354,7 +362,7 @@ export default function Home() {
     try {
       const { data, error } = await supabase
         .from("posts")
-        .select("id, author_id, converted_text, created_at")
+        .select("id, author_id, converted_text, created_at, style_profile:style_profiles(name)")
         .eq("parent_post_id", post.id)
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -372,6 +380,7 @@ export default function Home() {
         author_id: reply.author_id,
         converted_text: reply.converted_text,
         created_at: reply.created_at,
+        styleName: styleNameOf(reply.style_profile as StyleRelation),
         author: authorById.get(reply.author_id) ?? null,
       })));
     } catch (error) {
@@ -508,6 +517,8 @@ export default function Home() {
                   userName={author?.name ?? (post.author_id === currentUser?.id ? currentUser.name : "ユーザー")}
                   userId={author?.id ?? post.author_id}
                   iconUrl={iconImageUrl(author?.iconPath)}
+                  styleName={post.styleName}
+                  postHref={`/posts/${post.id}`}
                   text={post.converted_text}
                   originalText={post.original_text}
                   images={post.images}
@@ -575,6 +586,7 @@ export default function Home() {
       />
 
       <PostDetailModal
+        key={modalPost?.id ?? "closed"}
         post={modalPost}
         replies={detailReplies}
         isLoadingReplies={isLoadingReplies}
