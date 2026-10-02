@@ -44,6 +44,7 @@ export default function IconPicker({ icons, selectedId, onSelect, name }: IconPi
         .icon-option.selected { border-color: #299d48; background: #f1faed; }
         input { position: absolute; width: 1px; height: 1px; opacity: 0; }
         .icon-option:focus-within { outline: 2px solid #299d48; outline-offset: 2px; }
+        .icon-option.selected:focus-within { outline: none; }
         .icon-preview { width: 52px; height: 52px; border-radius: 50%; background: #d9d9d9; overflow: hidden; }
         .icon-preview img { width: 100%; height: 100%; object-fit: cover; }
         .icon-name { font-size: 12px; color: #222; overflow-wrap: anywhere; }

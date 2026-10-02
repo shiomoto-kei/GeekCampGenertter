@@ -75,7 +75,10 @@ export default function AuthGate({ children }: { children: ReactNode }) {
             {state === "google" && <p>ゲスト利用中でも、通知機能にはGoogleログインが必要です。</p>}
             {state === "error" && <p>通信状態を確認して、もう一度お試しください。</p>}
             {state === "setup" && <Link href="/setup?mode=google" className="auth-gate-button">プロフィール設定へ</Link>}
-            {(state === "login" || state === "google") && <Link href="/login" className="auth-gate-button">ログイン画面へ</Link>}
+            {(state === "login" || state === "google") && <div className="auth-gate-actions">
+              <Link href="/login" className="auth-gate-button">ログイン画面へ</Link>
+              {pathname === "/notice" && state === "google" && <Link href="/home" className="auth-gate-secondary">ホームに戻る</Link>}
+            </div>}
             {state === "error" && <button type="button" className="auth-gate-button" onClick={() => setRetry((value) => value + 1)}>再試行</button>}
           </div>
         </div>
@@ -86,6 +89,9 @@ export default function AuthGate({ children }: { children: ReactNode }) {
         h2 { margin: 0 0 12px; color: #1d3527; font-size: 19px; line-height: 1.5; }
         p { margin: 0 0 20px; color: #526359; font-size: 14px; line-height: 1.6; }
         .auth-gate-button { display: inline-block; border: 0; border-radius: 8px; padding: 12px 22px; color: #fff; background: #299d48; font-size: 15px; font-weight: 700; text-decoration: none; cursor: pointer; }
+        .auth-gate-actions { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+        .auth-gate-actions a { box-sizing: border-box; width: min(100%, 260px); text-align: center; }
+        .auth-gate-secondary { display: block; border: 1px solid #299d48; border-radius: 8px; padding: 10px 22px; color: #27743c; background: #fff; font-size: 14px; font-weight: 600; text-decoration: none; }
       `}</style>
     </>
   );
