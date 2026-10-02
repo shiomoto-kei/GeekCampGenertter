@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminClient, getGoogleSub } from "@/lib/auth/server";
 
 const noStore = { "Cache-Control": "no-store" };
+const PAGE_SIZE = 20;
 
 async function getRecipient(request: NextRequest) {
   const admin = getAdminClient();
@@ -35,17 +36,25 @@ export async function GET(request: NextRequest) {
   }
   if (countOnly) return NextResponse.json({ unreadCount: count ?? 0 }, { headers: noStore });
 
+  const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+    return NextResponse.json({ error: "通知の取得位置が不正です。" }, { status: 400, headers: noStore });
+  }
+
   const { data, error } = await recipient.admin
     .from("notifications")
     .select("id,actor_id,notification_type,post_id,is_read,created_at")
     .eq("recipient_id", recipient.recipientId)
     .order("created_at", { ascending: false })
-    .limit(50);
+    .order("id", { ascending: false })
+    .range(offset, offset + PAGE_SIZE);
   if (error) {
     return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
   }
 
-  const notifiedPostIds = [...new Set((data ?? []).flatMap((item) => item.post_id == null ? [] : [item.post_id]))];
+  const page = (data ?? []).slice(0, PAGE_SIZE);
+
+  const notifiedPostIds = [...new Set(page.flatMap((item) => item.post_id == null ? [] : [item.post_id]))];
   const postsById = new Map<number, { id: number; parent_post_id: number | null; converted_text: string; images_paths: { path: string }[] | null }>();
   if (notifiedPostIds.length) {
     const { data: notifiedPosts, error: postError } = await recipient.admin
@@ -55,7 +64,7 @@ export async function GET(request: NextRequest) {
     if (postError) return NextResponse.json({ error: "通知を取得できませんでした。" }, { status: 503, headers: noStore });
     for (const post of notifiedPosts ?? []) postsById.set(post.id, post);
 
-    const parentIds = [...new Set((data ?? []).flatMap((item) => {
+    const parentIds = [...new Set(page.flatMap((item) => {
       if (item.notification_type !== "reply" || item.post_id == null) return [];
       const parentId = postsById.get(item.post_id)?.parent_post_id;
       return parentId == null ? [] : [parentId];
@@ -70,7 +79,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const actorIds = [...new Set((data ?? []).flatMap((item) => item.actor_id == null ? [] : [item.actor_id]))];
+  const actorIds = [...new Set(page.flatMap((item) => item.actor_id == null ? [] : [item.actor_id]))];
   const actorProfiles = new Map<number, { name: string; iconPath: string | null }>();
   if (actorIds.length) {
     const { data: actors, error: actorError } = await recipient.admin.from("users").select("id,name,icon_id").in("id", actorIds);
@@ -94,7 +103,8 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     unreadCount: count ?? 0,
-    notifications: (data ?? []).map((item) => {
+    hasMore: (data?.length ?? 0) > PAGE_SIZE,
+    notifications: page.map((item) => {
       const notifiedPost = item.post_id == null ? null : postsById.get(item.post_id);
       const previewPost = item.notification_type === "reply"
         ? notifiedPost?.parent_post_id == null ? null : postsById.get(notifiedPost.parent_post_id)
