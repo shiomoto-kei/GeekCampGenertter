@@ -3,11 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { MouseEvent } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 export default function Footer() {
   const pathname = usePathname();
   const [hasUnreadNotice, setHasUnreadNotice] = useState(false);
+
+  function reloadOnFooterClick(event: MouseEvent<HTMLAnchorElement>, href: string) {
+    if (event.defaultPrevented || event.button !== 0 ||
+      event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    if (pathname === href) window.location.reload();
+    else window.location.assign(href);
+  }
 
   useEffect(() => {
     let active = true;
@@ -43,13 +52,13 @@ export default function Footer() {
     <>
       <footer className="footer">
         {/* Home */}
-        <Link href="/home" className="footer-item">
+        <Link href="/home" prefetch={false} className="footer-item" onClick={(event) => reloadOnFooterClick(event, "/home")}>
           <span className={`footer-icon home-icon ${pathname === "/home" ? "active-icon" : ""}`}></span>
           <span className={`footer-text ${pathname === "/home" ? "active-text" : ""}`}>Home</span>
         </Link>
 
         {/* Notice */}
-        <Link href="/notice" className="footer-item">
+        <Link href="/notice" prefetch={false} className="footer-item" onClick={(event) => reloadOnFooterClick(event, "/notice")}>
           <div className="icon-wrapper">
             <span className={`footer-icon notice-icon ${pathname === "/notice" ? "active-icon" : ""}`}></span>
             {hasUnreadNotice && <span className="notice-badge"></span>}
@@ -58,7 +67,7 @@ export default function Footer() {
         </Link>
 
         {/* mypage */}
-        <Link href="/mypage" className="footer-item">
+        <Link href="/mypage" prefetch={false} className="footer-item" onClick={(event) => reloadOnFooterClick(event, "/mypage")}>
           <span className={`footer-icon mypage-icon ${pathname === "/mypage" ? "active-icon" : ""}`}></span>
           <span className={`footer-text ${pathname === "/mypage" ? "active-text" : ""}`}>mypage</span>
         </Link>
