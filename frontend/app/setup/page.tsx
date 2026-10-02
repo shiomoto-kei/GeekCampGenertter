@@ -8,6 +8,20 @@ import { supabase } from "@/lib/supabase/client";
 import { iconImageUrl, type IconOption } from "@/lib/icons";
 
 type StyleProfile = { id: number; name: string };
+const hiddenSetupStyles = new Set(["赤ちゃん", "小学生"]);
+
+function iconGenerationForStyle(styleName: string) {
+  if (styleName === "中学生") return "高校生";
+  if (styleName === "アラサー") return "中年";
+  return styleName;
+}
+
+function isSupportedIconGender(iconGender: string) {
+  const value = iconGender.trim().toLocaleLowerCase();
+  const maleValues = ["男性", "男", "男子", "男性用", "male", "man", "boy", "m"];
+  const femaleValues = ["女性", "女", "女子", "女性用", "レディース", "female", "woman", "girl", "f"];
+  return maleValues.includes(value) || femaleValues.includes(value);
+}
 
 export default function Setup() {
   const router = useRouter();
@@ -32,7 +46,7 @@ export default function Setup() {
         if (!response.ok || !Array.isArray(result.styles)) {
           throw new Error("スタイル一覧を取得できませんでした。");
         }
-        const nextStyles = result.styles as StyleProfile[];
+        const nextStyles = (result.styles as StyleProfile[]).filter((style) => !hiddenSetupStyles.has(style.name));
         setStyles(nextStyles);
         if (nextStyles.length > 0) setStyleId(String(nextStyles[0].id));
       } catch {
@@ -65,7 +79,7 @@ export default function Setup() {
       setErrorMessage("名前とスタイルを入力してね！");
       return;
     }
-    if (icons.length > 0 && iconId === null) {
+    if (filteredIcons.length > 0 && iconId === null) {
       setErrorMessage("アイコンを選んでね！");
       return;
     }
@@ -103,6 +117,10 @@ export default function Setup() {
 
   const selectedIcon = icons.find((icon) => icon.id === iconId);
   const selectedIconUrl = iconImageUrl(selectedIcon?.image_path);
+  const selectedStyle = styles.find((style) => String(style.id) === styleId);
+  const filteredIcons = selectedStyle
+    ? icons.filter((icon) => icon.generation.trim() === iconGenerationForStyle(selectedStyle.name) && isSupportedIconGender(icon.gender))
+    : [];
 
   return (
     <div className="setup-page">
@@ -138,7 +156,7 @@ export default function Setup() {
             説明テキスト
             ========================= */}
         <p className="description-text">
-          名前・投稿スタイル・アイコンを選んでね。<br />
+          名前・年代・アイコンを選んでね。<br />
           文章の雰囲気は後から変更できるよ！
         </p>
 
@@ -154,8 +172,8 @@ export default function Setup() {
           {/* 右側の入力欄 */}
           <div className="profile-inputs">
             <label className="input-row">
-              <span className="input-label">スタイル：</span>
-              <select className="style-select" value={styleId} onChange={(event) => setStyleId(event.target.value)} required>
+              <span className="input-label">年代：</span>
+              <select className="style-select" value={styleId} onChange={(event) => { setStyleId(event.target.value); setIconId(null); }} required>
                 {styles.map((style) => (
                   <option key={style.id} value={style.id}>{style.name}</option>
                 ))}
@@ -165,7 +183,11 @@ export default function Setup() {
         </div>
 
         <div className="icon-picker-area">
-          {isLoadingIcons ? <p>アイコンを読み込み中…</p> : <IconPicker icons={icons} selectedId={iconId} onSelect={setIconId} name="setup-icon" />}
+          {isLoadingIcons ? <p>アイコンを読み込み中…</p> : icons.length > 0 && <>
+            {filteredIcons.length > 0
+              ? <IconPicker icons={filteredIcons} selectedId={iconId} onSelect={setIconId} name="setup-icon" />
+              : <p className="icon-filter-message">{selectedStyle?.name ?? "選んだ年代"}のアイコンはまだありません。</p>}
+          </>}
           {iconError && <p role="status" className="setup-error">{iconError}</p>}
         </div>
 
@@ -313,6 +335,7 @@ export default function Setup() {
 
         .profile-icon-placeholder img { width: 100%; height: 100%; object-fit: cover; }
         .icon-picker-area { width: 100%; margin-bottom: 24px; }
+        .icon-filter-message { margin: 12px 0; color: #666; font-size: 13px; text-align: center; }
 
         .profile-inputs {
           display: flex;
