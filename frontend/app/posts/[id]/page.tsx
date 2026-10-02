@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Header from "../../components/header";
 import Footer from "../../components/footer";
 import PostCard from "../../components/post-card";
@@ -11,6 +11,7 @@ import { iconImageUrl } from "@/lib/icons";
 
 type ReactionCode = "like" | "laugh" | "sad";
 type Author = { id: number; name: string; iconPath: string | null };
+type StyleRelation = { name: string } | { name: string }[] | null;
 type PostRow = {
   id: number;
   parent_post_id: number | null;
@@ -22,15 +23,27 @@ type PostRow = {
   sad_count: number;
   reply_count: number;
   created_at: string;
+  style_profile: StyleRelation;
   images_paths: { path: string }[] | null;
   post_hashtags: { hashtag: { tag_name: string } | { tag_name: string }[] | null }[] | null;
 };
-type PostView = PostRow & { author: Author | null; images: string[]; tags: string[] };
+type PostView = PostRow & { author: Author | null; styleName: string | null; images: string[]; tags: string[] };
 
-const postColumns = "id,parent_post_id,author_id,original_text,converted_text,like_count,laugh_count,sad_count,reply_count,created_at,images_paths(path),post_hashtags(hashtag:hashtags(tag_name))";
+const postColumns = "id,parent_post_id,author_id,original_text,converted_text,like_count,laugh_count,sad_count,reply_count,created_at,style_profile:style_profiles(name),images_paths(path),post_hashtags(hashtag:hashtags(tag_name))";
+
+function styleNameOf(style: StyleRelation) {
+  return Array.isArray(style) ? style[0]?.name ?? null : style?.name ?? null;
+}
 
 function formatDate(date: string) {
   return new Date(date).toLocaleString("ja-JP", { timeZone: "Asia/Tokyo" });
+}
+
+function ReturnLink() {
+  const from = useSearchParams().get("from");
+  const destination = from === "notice" ? "/notice" : from === "mypage" ? "/mypage" : "/home";
+  const label = from === "notice" ? "通知" : from === "mypage" ? "マイページ" : "ホーム";
+  return <Link href={destination} style={{ color: "#258a48", fontSize: 13, textDecoration: "none" }}>← {label}へ</Link>;
 }
 
 export default function PostDetail() {
@@ -94,6 +107,7 @@ export default function PostDetail() {
           return {
             ...row,
             author: authorById.get(row.author_id) ?? null,
+            styleName: styleNameOf(row.style_profile),
             images: (row.images_paths ?? []).map(({ path }) =>
               /^https?:\/\//i.test(path) ? path : supabase.storage.from("post-images").getPublicUrl(path).data.publicUrl,
             ),
@@ -165,7 +179,9 @@ export default function PostDetail() {
     <div className="detail-page">
       <Header />
       <main className="detail-main">
-        <Link href="/notice" className="back-link">← 通知に戻る</Link>
+        <Suspense fallback={<Link href="/home" style={{ color: "#258a48", fontSize: 13, textDecoration: "none" }}>← ホームへ</Link>}>
+          <ReturnLink />
+        </Suspense>
         <h1>投稿</h1>
         {loading && <p className="status">投稿を読み込み中…</p>}
         {errorMessage && <p className="status error" role="alert">{errorMessage}</p>}
@@ -175,6 +191,8 @@ export default function PostDetail() {
             userName={parent.author?.name ?? "ユーザー"}
             userId={parent.author_id}
             iconUrl={iconImageUrl(parent.author?.iconPath)}
+            styleName={parent.styleName}
+            postHref={`/posts/${parent.id}`}
             text={parent.converted_text}
             originalText={parent.original_text}
             images={parent.images}
@@ -187,6 +205,7 @@ export default function PostDetail() {
             userName={post.author?.name ?? "ユーザー"}
             userId={post.author_id}
             iconUrl={iconImageUrl(post.author?.iconPath)}
+            styleName={post.styleName}
             text={post.converted_text}
             originalText={post.original_text}
             images={post.images}
@@ -208,6 +227,7 @@ export default function PostDetail() {
           {replies.map((reply) => <div className="reply" key={reply.id}>
             <Link href={`/posts/${reply.id}`} className="reply-link">
               <strong>{reply.author?.name ?? "ユーザー"}</strong>
+              {reply.styleName && <small className="reply-style">{reply.styleName}</small>}
               <span>{reply.converted_text}</span>
               <time dateTime={reply.created_at}>{formatDate(reply.created_at)}</time>
             </Link>
@@ -218,7 +238,6 @@ export default function PostDetail() {
       <style jsx>{`
         .detail-page { width: 100%; max-width: 430px; min-height: 100dvh; margin: 0 auto; background: #fff; }
         .detail-main { padding: 88px 16px 92px; }
-        .back-link { color: #258a48; font-size: 13px; text-decoration: none; }
         h1 { margin: 14px 0 18px; color: #26342b; font-size: 20px; }
         h2 { margin: 16px 0 8px; color: #5b6d60; font-size: 14px; }
         .parent-section { margin-bottom: 18px; opacity: .82; }
@@ -228,6 +247,7 @@ export default function PostDetail() {
         .reply-link { display: flex; flex-direction: column; gap: 6px; padding: 12px 4px; color: #27342b; text-decoration: none; }
         .reply-link:hover { background: #f4f8f5; }
         .reply-link strong { font-size: 13px; }
+        .reply-style { align-self: flex-start; padding: 2px 7px; border-radius: 999px; background: #e8f5e8; color: #22743b; font-size: 10px; font-weight: 700; }
         .reply-link span { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
         .reply-link time { color: #7b857e; font-size: 11px; }
         .status { margin: 20px 0; color: #647168; font-size: 13px; }

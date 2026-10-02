@@ -100,7 +100,7 @@ export default function Notice() {
               key={item.id}
               message={`${item.actorName}さんがあなたの投稿に${item.type === "reply" ? "返信しました" : "リアクションしました"}。`}
               iconUrl={iconImageUrl(item.actorIconPath)}
-              postUrl={item.postId ? `/posts/${item.postId}` : null}
+              postUrl={item.postId ? `/posts/${item.postId}?from=notice` : null}
               postPreview={item.postPreview}
               postImageUrl={item.postImageUrl}
               isRead={item.isRead}

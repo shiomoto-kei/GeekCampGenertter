@@ -21,6 +21,8 @@ type MyPost = {
   sad_count: number;
   reply_count: number;
   created_at: string;
+  style_profile: { name: string } | { name: string }[] | null;
+  styleName: string | null;
   images_paths: { path: string }[] | null;
   post_hashtags: { hashtag: { tag_name: string } | { tag_name: string }[] | null }[] | null;
   images: string[];
@@ -88,7 +90,7 @@ export default function MyPage() {
 
         const { data: postData, error: postError } = await supabase
           .from("posts")
-          .select("id,author_id,original_text,converted_text,like_count,laugh_count,sad_count,reply_count,created_at,images_paths(path),post_hashtags(hashtag:hashtags(tag_name))")
+          .select("id,author_id,original_text,converted_text,like_count,laugh_count,sad_count,reply_count,created_at,style_profile:style_profiles(name),images_paths(path),post_hashtags(hashtag:hashtags(tag_name))")
           .eq("author_id", result.profile.id)
           .order("created_at", { ascending: false })
           .limit(50);
@@ -98,8 +100,9 @@ export default function MyPage() {
           return;
         }
         const bucket = "post-images";
-        const mappedPosts: MyPost[] = ((postData ?? []) as Omit<MyPost, "images" | "tags">[]).map((post) => ({
+        const mappedPosts: MyPost[] = ((postData ?? []) as Omit<MyPost, "images" | "tags" | "styleName">[]).map((post) => ({
           ...post,
+          styleName: Array.isArray(post.style_profile) ? post.style_profile[0]?.name ?? null : post.style_profile?.name ?? null,
           images: (post.images_paths ?? []).map(({ path }) => {
             if (/^https?:\/\//i.test(path)) return path;
             return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl;
@@ -204,6 +207,8 @@ export default function MyPage() {
               userName={profileName}
               userId={post.author_id}
               iconUrl={iconImageUrl(profileIconPath)}
+              styleName={post.styleName}
+              postHref={`/posts/${post.id}?from=mypage`}
               showDelete
               onDelete={() => deleteMyPost(post.id)}
               text={post.converted_text}
